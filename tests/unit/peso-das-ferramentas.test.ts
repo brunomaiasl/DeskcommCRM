@@ -36,6 +36,7 @@ import { allTools } from "@/lib/mcp/tools";
  */
 
 const BASE = "linha de base, medida quando a cerca nasceu (2026-10-31)";
+const FEEGOW = "agenda da clínica no Feegow (pacote agendar), medida na criação (2026-11-12)";
 
 const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_list_event_types": { tokens: 204, motivo: BASE },
@@ -123,6 +124,20 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_resume_ai_attendance": { tokens: 228, motivo: BASE },
   "crm_draft_proposal": { tokens: 1059, motivo: BASE },
   "crm_request_human_handoff": { tokens: 583, motivo: BASE },
+  // Agenda da clínica no Feegow + a leitura de setores, medidas na criação
+  // (2026-11-12). Só entram no turno com o pacote `agendar` (ou `escalar`, no
+  // caso dos setores) ligado no agente.
+  "crm_list_sectors": { tokens: 102, motivo: "ferramenta nova: lista os setores para crm_set_conversation_sector, medida na criação (2026-11-12)" },
+  "crm_feegow_list_specialties": { tokens: 121, motivo: FEEGOW },
+  "crm_feegow_list_professionals": { tokens: 120, motivo: FEEGOW },
+  "crm_feegow_next_available": { tokens: 288, motivo: FEEGOW },
+  "crm_feegow_available_slots": { tokens: 270, motivo: FEEGOW },
+  "crm_feegow_find_patient": { tokens: 102, motivo: FEEGOW },
+  "crm_feegow_list_patient_appointments": { tokens: 99, motivo: FEEGOW },
+  "crm_feegow_create_patient": { tokens: 258, motivo: FEEGOW },
+  "crm_feegow_book_appointment": { tokens: 394, motivo: FEEGOW },
+  "crm_feegow_reschedule_appointment": { tokens: 224, motivo: FEEGOW },
+  "crm_feegow_cancel_appointment": { tokens: 165, motivo: FEEGOW },
   "get_lead_context": { tokens: 46, motivo: BASE },
   "send_message": { tokens: 191, motivo: "imagem_url (Spec 25 R4): a foto por endereço, com a regra de procedência na descrição" },
   "update_lead_state": { tokens: 240, motivo: BASE },
@@ -147,8 +162,9 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
 // no `send_message` (Spec 25 R4, #3276); +464 com `crm_publish_whatsapp_status`
 // (#3463), que só entra no catálogo com o módulo `status_whatsapp` ligado; +37 na
 // descrição de `crm_get_conversation_history`, que passou a dizer o AUTOR da
-// mensagem (#4077).
-const TETO_TOTAL = 30667;
+// mensagem (#4077); +2143 com as dez ferramentas da agenda do Feegow e
+// `crm_list_sectors` — as do Feegow só entram no turno com o pacote `agendar`.
+const TETO_TOTAL = 32810;
 
 const VARIANTE = "schedule_followup (com negócio)";
 

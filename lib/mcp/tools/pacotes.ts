@@ -28,7 +28,8 @@ export type ToolBundle =
   | "reter"
   | "escalar"
   | "organizar"
-  | "evoluir";
+  | "evoluir"
+  | "agendar";
 
 export interface PacoteMeta {
   id: ToolBundle;
@@ -81,6 +82,16 @@ export const PACOTES: ReadonlyArray<PacoteMeta> = [
     explicacao:
       "O agente consulta o que a empresa já sabe, aprende com os atendimentos e sugere melhorias para você aprovar.",
     ordem: 6,
+  },
+  {
+    // Pacote próprio, e não `vender` (onde mora a agenda da equipe): a agenda do
+    // Feegow é de quem usa o Feegow, e `vender` não teria folga para mais dez
+    // capacidades dentro do teto por agente. Ver lib/mcp/tools/catalogo/feegow.ts.
+    id: "agendar",
+    rotulo: "Agendar na agenda da clínica",
+    explicacao:
+      "O agente consulta a agenda da clínica no Feegow, encontra o horário livre mais próximo para a especialidade pedida e marca, remarca ou desmarca a consulta do paciente.",
+    ordem: 7,
   },
 ] as const;
 

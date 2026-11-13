@@ -151,6 +151,14 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   // grava `crm_leads`, então a classificação é "não se aplica" — declarada,
   // porque ausência aqui é recusa por vacuidade (`ferramenta_nao_classificada`).
   crm_set_conversation_sector: "sem_funil",
+  // Agenda da clínica no Feegow (sistema externo): mexem no calendário de lá,
+  // nunca em `crm_leads`. A barreira delas é outra — o dono do agendamento é
+  // conferido contra o paciente antes de remarcar/desmarcar
+  // (lib/mcp/tools/feegow.ts).
+  crm_feegow_create_patient: "sem_funil",
+  crm_feegow_book_appointment: "sem_funil",
+  crm_feegow_reschedule_appointment: "sem_funil",
+  crm_feegow_cancel_appointment: "sem_funil",
   crm_resume_ai_attendance: "sem_funil",
   crm_save_org_memory: "sem_funil",
   crm_propose_contact_field: "sem_funil",

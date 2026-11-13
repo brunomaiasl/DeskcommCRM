@@ -1,0 +1,519 @@
+/**
+ * Serviço de agenda do Feegow — o que as tools do agente usam.
+ *
+ * As tools (`lib/mcp/tools/feegow.ts`) só validam entrada e formatam saída; a
+ * conversa com a API e a regra de "qual é o primeiro horário" vivem aqui, onde
+ * dá para testar sem montar contexto de agente.
+ */
+import { feegowGet, feegowPost, FeegowError } from "./client";
+import { getFeegowConfig } from "./config";
+import {
+  agoraEmSaoPaulo,
+  dataLegivel,
+  diaDaSemana,
+  horaCompleta,
+  horaCurta,
+  isoParaBR,
+  paraIso,
+  somarDias,
+} from "./datas";
+
+// ─── tipos ──────────────────────────────────────────────────────────────────
+
+export interface Especialidade {
+  especialidade_id: number;
+  nome: string;
+  /** Procedimento "consulta" padrão da especialidade. */
+  consulta_id: number | null;
+}
+
+export interface Profissional {
+  profissional_id: number;
+  nome: string;
+  especialidades: Array<{ especialidade_id: number; nome: string }>;
+}
+
+export interface Horario {
+  profissional_id: number;
+  local_id: number;
+  /** ISO `YYYY-MM-DD`. */
+  data: string;
+  /** `HH:MM`. */
+  hora: string;
+}
+
+// ─── cache curto (listas que mudam pouco) ───────────────────────────────────
+
+const TTL_MS = 10 * 60_000;
+const cache = new Map<string, { expira: number; valor: unknown }>();
+
+async function comCache<T>(chave: string, carregar: () => Promise<T>): Promise<T> {
+  const agora = Date.now();
+  const hit = cache.get(chave);
+  if (hit && hit.expira > agora) return hit.valor as T;
+  const valor = await carregar();
+  cache.set(chave, { expira: agora + TTL_MS, valor });
+  return valor;
+}
+
+/** Para testes e para "acabei de mudar o cadastro no Feegow". */
+export function limparCacheDoFeegow(): void {
+  cache.clear();
+}
+
+// ─── texto ──────────────────────────────────────────────────────────────────
+
+/** Minúsculas, sem acento: "Dermatológica" casa com "dermato". */
+export function normalizar(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function num(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// ─── especialidades e profissionais ─────────────────────────────────────────
+
+export async function listarEspecialidades(termo?: string): Promise<Especialidade[]> {
+  const cfg = getFeegowConfig();
+  const todas = await comCache("especialidades", async () => {
+    const bruto = await feegowGet<unknown>("specialties/list", {
+      unidade_id: cfg?.unidadeId ?? undefined,
+    });
+    const lista = Array.isArray(bruto) ? bruto : [];
+    return lista
+      .map((e): Especialidade | null => {
+        const r = e as Record<string, unknown>;
+        const id = num(r.especialidade_id);
+        if (id === null) return null;
+        return {
+          especialidade_id: id,
+          nome: String(r.nome ?? `Especialidade ${id}`),
+          consulta_id: num(r.consulta_id),
+        };
+      })
+      .filter((e): e is Especialidade => e !== null);
+  });
+  if (!termo || !termo.trim()) return todas;
+  const alvo = normalizar(termo);
+  return todas.filter((e) => normalizar(e.nome).includes(alvo));
+}
+
+export async function obterEspecialidade(id: number): Promise<Especialidade | null> {
+  const todas = await listarEspecialidades();
+  return todas.find((e) => e.especialidade_id === id) ?? null;
+}
+
+export async function listarProfissionais(opcoes: {
+  especialidade_id?: number;
+  termo?: string;
+} = {}): Promise<Profissional[]> {
+  const cfg = getFeegowConfig();
+  const chave = `profissionais:${opcoes.especialidade_id ?? "todas"}`;
+  const todos = await comCache(chave, async () => {
+    const bruto = await feegowGet<unknown>("professional/list", {
+      ativo: 1,
+      unidade_id: cfg?.unidadeId ?? undefined,
+      especialidade_id: opcoes.especialidade_id,
+    });
+    const lista = Array.isArray(bruto) ? bruto : [];
+    return lista
+      .map((p): Profissional | null => {
+        const r = p as Record<string, unknown>;
+        const id = num(r.profissional_id);
+        if (id === null) return null;
+        const esp = Array.isArray(r.especialidades) ? r.especialidades : [];
+        return {
+          profissional_id: id,
+          nome: typeof r.nome === "string" && r.nome.trim() ? r.nome.trim() : `Profissional ${id}`,
+          especialidades: esp
+            .map((e) => {
+              const x = e as Record<string, unknown>;
+              const eid = num(x.especialidade_id);
+              return eid === null
+                ? null
+                : { especialidade_id: eid, nome: String(x.nome_especialidade ?? "") };
+            })
+            .filter((e): e is { especialidade_id: number; nome: string } => e !== null),
+        };
+      })
+      .filter((p): p is Profissional => p !== null);
+  });
+  if (!opcoes.termo || !opcoes.termo.trim()) return todos;
+  const alvo = normalizar(opcoes.termo);
+  return todos.filter((p) => normalizar(p.nome).includes(alvo));
+}
+
+// ─── disponibilidade ────────────────────────────────────────────────────────
+
+/**
+ * A resposta de `available-schedule` tem DUAS formas para `local_id`, as duas
+ * documentadas: lista de objetos `[{ "2018-08-10": [...] }]` (sem id de local) e
+ * objeto `{ "15": { "2018-08-11": [...] } }`. Lista vazia vem como `[]`, não `{}`.
+ * Normaliza tudo para `Horario[]`.
+ */
+export function normalizarDisponibilidade(content: unknown): Horario[] {
+  const saida: Horario[] = [];
+  if (!content || typeof content !== "object") return saida;
+  const porProfissional = (content as { profissional_id?: unknown }).profissional_id;
+  if (!porProfissional || typeof porProfissional !== "object") return saida;
+
+  const empurrar = (profissionalId: number, localId: number, dias: unknown) => {
+    if (!dias || typeof dias !== "object") return;
+    for (const [chaveData, horas] of Object.entries(dias as Record<string, unknown>)) {
+      const iso = paraIso(chaveData);
+      if (!iso || !Array.isArray(horas)) continue;
+      for (const h of horas) {
+        if (typeof h === "string" && /^\d{2}:\d{2}/.test(h)) {
+          saida.push({ profissional_id: profissionalId, local_id: localId, data: iso, hora: horaCurta(h) });
+        }
+      }
+    }
+  };
+
+  for (const [idTexto, info] of Object.entries(porProfissional as Record<string, unknown>)) {
+    const profissionalId = num(idTexto);
+    if (profissionalId === null || !info || typeof info !== "object") continue;
+    const locais = (info as { local_id?: unknown }).local_id;
+    if (Array.isArray(locais)) {
+      for (const bloco of locais) empurrar(profissionalId, 0, bloco);
+    } else if (locais && typeof locais === "object") {
+      for (const [idLocal, dias] of Object.entries(locais as Record<string, unknown>)) {
+        empurrar(profissionalId, num(idLocal) ?? 0, dias);
+      }
+    }
+  }
+  return saida;
+}
+
+export function ordenarHorarios(horarios: Horario[]): Horario[] {
+  return [...horarios].sort(
+    (a, b) =>
+      a.data.localeCompare(b.data) ||
+      a.hora.localeCompare(b.hora) ||
+      a.profissional_id - b.profissional_id,
+  );
+}
+
+export interface FiltroDeHorarios {
+  especialidade_id?: number;
+  procedimento_id?: number;
+  profissional_id?: number;
+  convenio_id?: number;
+  /** ISO. */
+  de: string;
+  /** ISO. */
+  ate: string;
+}
+
+/** Uma consulta à agenda, já sem horários que ficaram no passado (relógio de SP). */
+export async function buscarHorarios(f: FiltroDeHorarios): Promise<Horario[]> {
+  const cfg = getFeegowConfig();
+  const porProcedimento = f.procedimento_id !== undefined && f.especialidade_id === undefined;
+  if (!porProcedimento && f.especialidade_id === undefined) {
+    throw new FeegowError("validacao", "informe a especialidade ou o procedimento");
+  }
+  const conteudo = await feegowGet<unknown>("appoints/available-schedule", {
+    tipo: porProcedimento ? "P" : "E",
+    especialidade_id: porProcedimento ? undefined : f.especialidade_id,
+    procedimento_id: porProcedimento ? f.procedimento_id : undefined,
+    profissional_id: f.profissional_id,
+    convenio_id: f.convenio_id,
+    unidade_id: cfg?.unidadeId ?? undefined,
+    data_start: isoParaBR(f.de),
+    data_end: isoParaBR(f.ate),
+  });
+  const agora = agoraEmSaoPaulo();
+  return ordenarHorarios(
+    normalizarDisponibilidade(conteudo).filter(
+      (h) => h.data > agora.data || (h.data === agora.data && h.hora > agora.hora),
+    ),
+  );
+}
+
+export const JANELA_DE_BUSCA_DIAS = 15;
+export const LIMITE_DE_BUSCA_DIAS = 90;
+
+/**
+ * O primeiro horário livre a partir de `de`, andando em janelas de 15 dias até
+ * achar ou chegar a 90 dias. Janela curta de propósito: a API devolve a agenda
+ * INTEIRA do período, e pedir 90 dias de uma vez para achar "amanhã" é gastar
+ * tempo e tráfego à toa.
+ */
+export async function primeirosHorarios(
+  f: Omit<FiltroDeHorarios, "de" | "ate"> & { de?: string },
+  buscar: (filtro: FiltroDeHorarios) => Promise<Horario[]> = buscarHorarios,
+): Promise<{ horarios: Horario[]; buscou_ate: string }> {
+  const inicio = f.de ?? agoraEmSaoPaulo().data;
+  const teto = somarDias(inicio, LIMITE_DE_BUSCA_DIAS);
+  let janelaInicio = inicio;
+  let buscouAte = inicio;
+  while (janelaInicio <= teto) {
+    const janelaFim = somarDias(janelaInicio, JANELA_DE_BUSCA_DIAS - 1);
+    const fim = janelaFim < teto ? janelaFim : teto;
+    const horarios = await buscar({ ...f, de: janelaInicio, ate: fim });
+    buscouAte = fim;
+    if (horarios.length > 0) return { horarios: ordenarHorarios(horarios), buscou_ate: buscouAte };
+    janelaInicio = somarDias(fim, 1);
+  }
+  return { horarios: [], buscou_ate: buscouAte };
+}
+
+/** Forma que o modelo lê: data por extenso, nome do profissional, sem ids soltos. */
+export function descreverHorario(h: Horario, nomes: Map<number, string>) {
+  return {
+    profissional_id: h.profissional_id,
+    profissional: nomes.get(h.profissional_id) ?? `Profissional ${h.profissional_id}`,
+    local_id: h.local_id,
+    data: h.data,
+    hora: h.hora,
+    dia_da_semana: diaDaSemana(h.data),
+    data_legivel: dataLegivel(h.data),
+  };
+}
+
+/** O mais cedo de cada profissional, ordenado do mais próximo ao mais distante. */
+export function primeiroDeCadaProfissional(horarios: Horario[]): Horario[] {
+  const vistos = new Map<number, Horario>();
+  for (const h of ordenarHorarios(horarios)) {
+    if (!vistos.has(h.profissional_id)) vistos.set(h.profissional_id, h);
+  }
+  return ordenarHorarios([...vistos.values()]);
+}
+
+// ─── procedimento e valor ───────────────────────────────────────────────────
+
+/** Valor em centavos do procedimento para este paciente/profissional; `null` se não achar. */
+export async function valorDoProcedimento(opcoes: {
+  procedimento_id: number;
+  especialidade_id?: number;
+  profissional_id?: number;
+  paciente_id?: number;
+}): Promise<number | null> {
+  const cfg = getFeegowConfig();
+  const bruto = await feegowGet<unknown>("procedures/list", {
+    procedimento_id: opcoes.procedimento_id,
+    especialidade_id: opcoes.especialidade_id,
+    profissional_id: opcoes.profissional_id,
+    paciente_id: opcoes.paciente_id,
+    unidade_id: cfg?.unidadeId ?? undefined,
+  });
+  const lista = Array.isArray(bruto) ? bruto : [];
+  const achado = lista.find((p) => num((p as Record<string, unknown>).procedimento_id) === opcoes.procedimento_id);
+  return achado ? num((achado as Record<string, unknown>).valor) : null;
+}
+
+// ─── motivos (cancelar / remarcar) ──────────────────────────────────────────
+
+/**
+ * O motivo é obrigatório no Feegow, mas o paciente no WhatsApp não escolhe de
+ * uma lista. Usa o motivo "solicitado pelo paciente" — que é o que de fato
+ * aconteceu — e cai no primeiro da lista se a clínica renomeou.
+ */
+export async function motivoPadrao(): Promise<number> {
+  const motivos = await comCache("motivos", async () => {
+    const bruto = await feegowGet<unknown>("appoints/motives");
+    return (Array.isArray(bruto) ? bruto : [])
+      .map((m) => {
+        const r = m as Record<string, unknown>;
+        const id = num(r.id);
+        return id === null ? null : { id, motivo: String(r.motivo ?? "") };
+      })
+      .filter((m): m is { id: number; motivo: string } => m !== null);
+  });
+  const doPaciente = motivos.find((m) => normalizar(m.motivo).includes("paciente"));
+  return doPaciente?.id ?? motivos[0]?.id ?? 1;
+}
+
+// ─── pacientes ──────────────────────────────────────────────────────────────
+
+export interface PacienteResumo {
+  paciente_id: number;
+  primeiro_nome: string;
+  convenios: Array<{ convenio_id: number; plano_id: number | null }>;
+}
+
+export function soDigitos(valor: string): string {
+  return valor.replace(/\D/g, "");
+}
+
+/**
+ * Devolve o MÍNIMO da ficha. `patient/search` traz endereço, documentos e
+ * telefones; nada disso é necessário para agendar, e tudo que o modelo lê pode
+ * acabar numa mensagem para quem informou só um CPF (que pode nem ser dele).
+ */
+export async function buscarPacientePorCpf(cpf: string): Promise<PacienteResumo | null> {
+  const digitos = soDigitos(cpf);
+  try {
+    const c = await feegowGet<unknown>("patient/search", { paciente_cpf: digitos, cache: "NONE" });
+    const r = (Array.isArray(c) ? c[0] : c) as Record<string, unknown> | undefined;
+    const id = r ? num(r.id) : null;
+    if (!r || id === null) return null;
+    const convs = Array.isArray(r.convenios) ? r.convenios : [];
+    return {
+      paciente_id: id,
+      primeiro_nome: String(r.nome ?? "").trim().split(/\s+/)[0] ?? "",
+      convenios: convs
+        .map((x) => {
+          const y = x as Record<string, unknown>;
+          const cid = num(y.convenio_id);
+          return cid === null ? null : { convenio_id: cid, plano_id: num(y.plano_id) };
+        })
+        .filter((x): x is { convenio_id: number; plano_id: number | null } => x !== null),
+    };
+  } catch (err) {
+    // 409 aqui é "paciente não encontrado" — resposta normal, não falha.
+    if (err instanceof FeegowError && err.kind === "conflito") return null;
+    throw err;
+  }
+}
+
+export async function criarPaciente(dados: {
+  nome_completo: string;
+  cpf: string;
+  data_nascimento?: string;
+  genero?: "M" | "F";
+  celular?: string;
+  email?: string;
+}): Promise<number> {
+  const conteudo = await feegowPost<{ paciente_id?: unknown }>("patient/create", {
+    nome_completo: dados.nome_completo,
+    cpf: soDigitos(dados.cpf),
+    data_nascimento: dados.data_nascimento,
+    genero: dados.genero,
+    celular: dados.celular ? soDigitos(dados.celular) : undefined,
+    email: dados.email,
+  });
+  const id = num(conteudo?.paciente_id);
+  if (id === null) throw new FeegowError("indisponivel", "o Feegow não devolveu o código do paciente");
+  return id;
+}
+
+// ─── agendamentos ───────────────────────────────────────────────────────────
+
+export interface Agendamento {
+  agendamento_id: number;
+  paciente_id: number | null;
+  profissional_id: number | null;
+  especialidade_id: number | null;
+  procedimento_id: number | null;
+  local_id: number | null;
+  data: string | null;
+  horario: string | null;
+  status_id: number | null;
+}
+
+function lerAgendamento(bruto: unknown): Agendamento | null {
+  const r = bruto as Record<string, unknown>;
+  const id = num(r?.agendamento_id);
+  if (id === null) return null;
+  const data = typeof r.data === "string" ? paraIso(r.data) : null;
+  return {
+    agendamento_id: id,
+    paciente_id: num(r.paciente_id),
+    profissional_id: num(r.profissional_id),
+    especialidade_id: num(r.especialidade_id),
+    procedimento_id: num(r.procedimento_id),
+    local_id: num(r.local_id),
+    data,
+    horario: typeof r.horario === "string" ? horaCurta(r.horario) : null,
+    status_id: num(r.status_id),
+  };
+}
+
+/** Status que significam "não vai mais acontecer / já aconteceu" (ver `/appoints/status`). */
+const STATUS_ENCERRADOS = new Set([3, 6, 11, 15, 16]);
+
+export async function listarAgendamentosDoPaciente(
+  paciente_id: number,
+  de: string = agoraEmSaoPaulo().data,
+): Promise<Agendamento[]> {
+  const bruto = await feegowGet<unknown>("appoints/search", {
+    paciente_id,
+    data_start: isoParaBR(de),
+    data_end: isoParaBR(somarDias(de, 365)),
+  });
+  return (Array.isArray(bruto) ? bruto : [])
+    .map(lerAgendamento)
+    .filter((a): a is Agendamento => a !== null)
+    .filter((a) => a.paciente_id === paciente_id)
+    .filter((a) => a.status_id === null || !STATUS_ENCERRADOS.has(a.status_id))
+    .sort((a, b) => `${a.data}${a.horario}`.localeCompare(`${b.data}${b.horario}`));
+}
+
+export async function obterAgendamento(agendamento_id: number): Promise<Agendamento | null> {
+  const bruto = await feegowGet<unknown>("appoints/search", { agendamento_id });
+  const lista = Array.isArray(bruto) ? bruto : [];
+  return lista.map(lerAgendamento).find((a) => a?.agendamento_id === agendamento_id) ?? null;
+}
+
+export async function criarAgendamento(dados: {
+  paciente_id: number;
+  profissional_id: number;
+  especialidade_id: number;
+  procedimento_id: number;
+  local_id: number;
+  data: string;
+  hora: string;
+  valor: number;
+  convenio_id?: number;
+  convenio_plano_id?: number;
+  notas?: string;
+  celular?: string;
+  email?: string;
+  retorno?: boolean;
+}): Promise<{ agendamento_id: number; link: string | null }> {
+  const cfg = getFeegowConfig();
+  const comConvenio = dados.convenio_id !== undefined;
+  const conteudo = await feegowPost<{ agendamento_id?: unknown; link?: unknown }>("appoints/new-appoint", {
+    local_id: dados.local_id,
+    paciente_id: dados.paciente_id,
+    profissional_id: dados.profissional_id,
+    especialidade_id: dados.especialidade_id,
+    procedimento_id: dados.procedimento_id,
+    data: isoParaBR(dados.data),
+    horario: horaCompleta(dados.hora),
+    // Regra da API: com convênio, `valor` TEM que ser 0.
+    valor: comConvenio ? 0 : dados.valor,
+    plano: comConvenio ? 1 : 0,
+    convenio_id: dados.convenio_id,
+    convenio_plano_id: dados.convenio_plano_id,
+    canal_id: cfg?.canalId ?? undefined,
+    notas: dados.notas,
+    celular: dados.celular ? soDigitos(dados.celular) : undefined,
+    email: dados.email,
+    retorno: dados.retorno,
+  });
+  const id = num(conteudo?.agendamento_id);
+  if (id === null) throw new FeegowError("indisponivel", "o Feegow não devolveu o código do agendamento");
+  return { agendamento_id: id, link: typeof conteudo?.link === "string" ? conteudo.link : null };
+}
+
+export async function cancelarAgendamento(dados: {
+  agendamento_id: number;
+  motivo_id: number;
+  obs?: string;
+}): Promise<void> {
+  await feegowPost("appoints/cancel-appoint", dados);
+}
+
+export async function remarcarAgendamento(dados: {
+  agendamento_id: number;
+  motivo_id: number;
+  data: string;
+  hora: string;
+  obs?: string;
+}): Promise<void> {
+  await feegowPost("appoints/reschedule", {
+    agendamento_id: dados.agendamento_id,
+    motivo_id: dados.motivo_id,
+    data: isoParaBR(dados.data),
+    horario: horaCompleta(dados.hora),
+    obs: dados.obs,
+  });
+}

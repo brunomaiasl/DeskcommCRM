@@ -47,7 +47,16 @@ export type DonoDoCampo =
   /** `lead_id`: quem guarda é `negocioDaEscritaDoTurno`, em `tools.ts`. */
   | "negocio"
   /** Não é registro de cliente: funil, etapa, usuário, fluxo. */
-  | "configuracao";
+  | "configuracao"
+  /**
+   * Identificador de OUTRO SISTEMA (hoje: o Feegow — paciente, agendamento,
+   * profissional). Não existe linha no CRM contra a qual conferir, e o valor é
+   * número, não uuid. Quem confere o dono é o HANDLER, contra o próprio sistema
+   * externo (ex.: `crm_feegow_cancel_appointment` recusa agendamento de outro
+   * paciente). Declarar aqui é dizer isso em voz alta — o campo não passa
+   * calado pela ponte, passa com o motivo escrito.
+   */
+  | "externo";
 
 export const ESCOPO_DAS_ESCRITAS: Readonly<Record<string, Readonly<Record<string, DonoDoCampo>>>> = {
   // ---- agenda ----
@@ -107,6 +116,23 @@ export const ESCOPO_DAS_ESCRITAS: Readonly<Record<string, Readonly<Record<string
   crm_cancel_followup: { followup_id: "retorno" },
   crm_enroll_followup_flow: { contact_id: "contato", flow_id: "configuracao" },
 
+  // ---- agenda da clínica no Feegow (sistema externo) ----
+  // Nenhum campo aponta para registro do CRM. O cadastro novo não recebe id;
+  // marcar/remarcar/desmarcar recebem ids do Feegow, e o dono do agendamento é
+  // conferido pelo handler contra o paciente (lib/mcp/tools/feegow.ts).
+  crm_feegow_create_patient: {},
+  crm_feegow_book_appointment: {
+    paciente_id: "externo",
+    profissional_id: "externo",
+    especialidade_id: "externo",
+    local_id: "externo",
+    procedimento_id: "externo",
+    convenio_id: "externo",
+    convenio_plano_id: "externo",
+  },
+  crm_feegow_reschedule_appointment: { agendamento_id: "externo", paciente_id: "externo" },
+  crm_feegow_cancel_appointment: { agendamento_id: "externo", paciente_id: "externo" },
+
   // ---- sem registro de cliente ----
   crm_save_org_memory: {},
 };
@@ -155,6 +181,7 @@ async function campoEhDoContato(
   switch (dono) {
     case "negocio":
     case "configuracao":
+    case "externo":
       return true;
     case "contato":
       return id.toLowerCase() === contato.toLowerCase();
@@ -230,6 +257,10 @@ export async function escritaCabeNoTurno(
   }
   try {
     for (const [campo, dono] of Object.entries(campos)) {
+      // Id de outro sistema: não há o que consultar aqui, e o valor é número (o
+      // Zod da ferramenta já validou o tipo antes da ponte). O dono é conferido
+      // no handler — ver `externo` em DonoDoCampo.
+      if (dono === "externo") continue;
       const valor = args[campo];
       if (valor === undefined || valor === null) continue;
       if (typeof valor !== "string") return FORA_DA_CONVERSA;

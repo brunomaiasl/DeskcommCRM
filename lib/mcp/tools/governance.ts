@@ -378,6 +378,50 @@ export const crmSetConversationSector: McpToolDefinition<typeof setSectorInputSh
 };
 
 // ---------------------------------------------------------------------------
+// crm_list_sectors
+// ---------------------------------------------------------------------------
+
+/**
+ * A metade que faltava de `crm_set_conversation_sector`: ela exige o `sector_id`,
+ * e nada no turno dizia ao agente quais setores existem — ele só acertaria o id
+ * se o dono o colasse no prompt. Com esta leitura a triagem fica autônoma:
+ * "não consegui agendar" → acha o setor da recepção/agendamento → coloca a
+ * conversa lá → passa para uma pessoa (que a distribuição já escolhe no setor).
+ *
+ * Só nome e descrição: quem está em cada setor e o horário dele são da
+ * distribuição, não da decisão do modelo.
+ */
+const listSectorsInputShape = {};
+
+export const crmListSectors: McpToolDefinition<typeof listSectorsInputShape> = {
+  name: "crm_list_sectors",
+  description:
+    "Lista os SETORES (filas) de atendimento desta organização: sector_id, nome e descrição. Use " +
+    "antes de crm_set_conversation_sector para escolher o setor certo pelo assunto — por exemplo, " +
+    "quando não conseguiu agendar, o setor de agendamento/recepção. Lista vazia: a organização " +
+    "não usa setores; passe para uma pessoa sem escolher setor.",
+  inputSchema: listSectorsInputShape,
+  category: "read",
+  requiresRole: "agent",
+  requiresScope: "mcp:read",
+  handler: async (_input, ctx) => {
+    const { data, error } = await ctx.supabase
+      .from("attendant_sectors")
+      .select("id, name, description")
+      .eq("organization_id", ctx.organizationId)
+      .order("name", { ascending: true });
+    if (error) throw new Error(`listar_setores_falhou: ${error.message}`);
+    const setores = ((data ?? []) as Array<{ id: string; name: string; description: string | null }>).map(
+      (s) => ({ sector_id: s.id, nome: s.name, descricao: s.description }),
+    );
+    return {
+      setores,
+      ...(setores.length === 0 ? { aviso: "nenhum setor cadastrado nesta organização" } : {}),
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // crm_get_queue_status
 // ---------------------------------------------------------------------------
 

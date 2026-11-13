@@ -35,8 +35,21 @@ import {
   crmAssignConversation,
   crmManageTags,
   crmGetQueueStatus,
+  crmListSectors,
   crmSetConversationSector,
 } from "./governance";
+import {
+  crmFeegowListSpecialties,
+  crmFeegowListProfessionals,
+  crmFeegowNextAvailable,
+  crmFeegowAvailableSlots,
+  crmFeegowFindPatient,
+  crmFeegowListPatientAppointments,
+  crmFeegowCreatePatient,
+  crmFeegowBookAppointment,
+  crmFeegowRescheduleAppointment,
+  crmFeegowCancelAppointment,
+} from "./feegow";
 import {
   crmListAvailableAttendants,
   crmListHumanCases,
@@ -115,6 +128,8 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmGetConversation,
   crmGetConversationHistory,
   crmGetQueueStatus,
+  // Os setores existentes — a metade de leitura de crmSetConversationSector.
+  crmListSectors,
   crmListLeads,
   crmGetLead,
   crmListPipelines,
@@ -149,6 +164,13 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListAvailableAttendants,
   crmListHumanCases,
   crmGetHumanCase,
+  // read — agenda da clínica no Feegow (sistema externo)
+  crmFeegowListSpecialties,
+  crmFeegowListProfessionals,
+  crmFeegowNextAvailable,
+  crmFeegowAvailableSlots,
+  crmFeegowFindPatient,
+  crmFeegowListPatientAppointments,
   // write
   // A que consulta E marca numa chamada só vem primeiro: quando o cliente já deu
   // dia e hora, é o caminho curto, e é o que evita o turno morrer no meio (#831).
@@ -190,6 +212,11 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmCloseHumanCase,
   crmResumeAiAttendance,
   crmDraftProposal,
+  // write — agenda da clínica no Feegow (sistema externo)
+  crmFeegowCreatePatient,
+  crmFeegowBookAppointment,
+  crmFeegowRescheduleAppointment,
+  crmFeegowCancelAppointment,
   // handoff (special)
   crmRequestHumanHandoff,
 ] as unknown as ReadonlyArray<McpToolDefinition>;

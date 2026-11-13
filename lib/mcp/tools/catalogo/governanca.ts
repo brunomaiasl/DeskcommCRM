@@ -59,6 +59,17 @@ export const TOOLS_GOVERNANCA = declararTools([
     modulo: "setores",
   },
   {
+    name: "crm_list_sectors",
+    category: "read",
+    rotulo: "Ver os setores de atendimento",
+    explicacao:
+      "Mostra os setores da empresa (recepção, financeiro, comercial), para o assistente escolher para qual deles mandar a conversa quando precisa de uma pessoa.",
+    oQueToca: "Setores de atendimento",
+    risco: "seguro",
+    pacotes: ["escalar", "agendar"],
+    modulo: "setores",
+  },
+  {
     name: "crm_request_human_handoff",
     category: "handoff",
     rotulo: "Chamar um atendente humano",
