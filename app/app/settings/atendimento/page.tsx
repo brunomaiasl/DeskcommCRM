@@ -27,6 +27,9 @@ import { configAssinatura } from "@/lib/messaging/assinatura";
 import { podeAdministrarEmpresa } from "@/lib/auth/pode-administrar-empresa";
 import { regrasDeCliente, telefoneDeFichaVaziaLigado, nomeInformadoLigado, duplicadosPorNomeLigado } from "@/lib/schemas/settings";
 import { AssinaturaForm } from "./_assinatura-form";
+import { WebChatForm } from "./_webchat-form";
+import { lerConfigDoWebChat } from "@/lib/webchat/config";
+import { basePublica, CAMINHO_DA_PAGINA } from "@/lib/webchat/links";
 import { ClientePelaVenda } from "./_clientePelaVenda";
 import { ChannelRoutingForm } from "./_channels-form";
 import { AtendimentoForm } from "./_form";
@@ -38,6 +41,12 @@ import { moduloLigado } from "@/lib/instalacao/modulos";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+
+/** O endereço do botão de URL do modelo da Meta, com `{{1}}` no fim (o token). */
+function urlDoModeloDoWebChat(): string | null {
+  const base = basePublica();
+  return base ? `${base}${CAMINHO_DA_PAGINA}{{1}}` : null;
+}
 
 export default async function AtendimentoSettingsPage() {
   const user = await requireAuth();
@@ -104,6 +113,7 @@ export default async function AtendimentoSettingsPage() {
       />
       <ChannelRoutingForm initial={channels} />
       <AssinaturaForm initial={assinaturaInicial} />
+      <WebChatForm initial={lerConfigDoWebChat(settings)} urlDoModelo={urlDoModeloDoWebChat()} />
       <NomeInformado ligada={nomeInformadoLigado({ crm: settings.crm })} idioma={idioma} podeMudar={podeAdministrarEmpresa(user, activeOrg)} />
       <TelefoneDeFichaVazia
         ligada={telefoneDeFichaVazia}

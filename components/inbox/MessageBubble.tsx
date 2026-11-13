@@ -16,6 +16,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
+import { viaWebchat } from "@/lib/webchat/marca";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Message } from "@/lib/types/messaging";
 import type { ReacaoNoBalao } from "@/lib/inbox/reacoes-no-fio";
@@ -716,6 +717,18 @@ export function MessageBubble({
             // ou endereço é lido como se sempre tivesse dito aquilo — e a
             // divergência só aparece quando alguém cobra o que não foi.
             <span title={t("O autor editou esta mensagem")}>{t("editada")}</span>
+          )}
+          {viaWebchat(message.metadata) && (
+            // Andou pela página do Web Chat (migration 9348), não pelo WhatsApp:
+            // quem lê o histórico precisa saber onde o paciente viu (ou escreveu)
+            // esta mensagem — e que ela não custou mensagem paga.
+            <span
+              className="rounded-sm border border-current/40 px-1 leading-tight"
+              title={t("Esta mensagem passou pela página do Web Chat, não pelo WhatsApp")}
+              data-testid="via-webchat"
+            >
+              {t("via Web Chat")}
+            </span>
           )}
           <span>{time}</span>
           {showCitationButton && (

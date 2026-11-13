@@ -48,6 +48,7 @@ import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { DialogoDeConvite, ParticipantesDaConversa } from "@/components/inbox/ParticipantesDaConversa";
 import { DialogoMoverParaFila, ItemMoverParaFila } from "@/components/inbox/MoverParaFila";
+import { WebChatDaConversa } from "@/components/inbox/WebChatDaConversa";
 import { DialButton } from "@/components/voice/DialButton";
 import { VideoCallButton } from "@/components/inbox/VideoCallButton";
 import { ItemReservarServico, ReservarServicoNaConversa } from "@/components/agenda/ReservarServicoNaConversa";
@@ -475,6 +476,15 @@ export function ConversationHeader({
             <MagnifyingGlass size={16} aria-hidden />
           </Button>
         )}
+        {/* WEB CHAT (migration 9348): por onde o paciente está sendo atendido —
+            a página ou o WhatsApp — e as ações de mandar outro link, voltar e
+            desativar. Some sozinho com o Web Chat desligado na organização. */}
+        <WebChatDaConversa
+          conversationId={conversation.id}
+          encerrada={encerrada}
+          grupo={conversation.is_group === true}
+        />
+
         {/* QUEM MAIS ESTÁ AQUI (#2542) fica na BARRA, e só a PRESENÇA (#3003).
             Os avatares são informação — "quem mais está comigo nesta conversa?"
             —, e informação dentro de um menu deixa de ser lida. O convite é

@@ -145,6 +145,13 @@ export const AUDIT_ACTIONS = [
   // tenha resposta sem abrir o histórico inteiro.
   "conversation.ai_with_owner_enabled",
   "conversation.ai_with_owner_disabled",
+  // Web Chat (migration 9348): mandar o link custa uma mensagem paga e abre a
+  // conversa numa página por 24h; voltar ao WhatsApp e desativar revogam o link.
+  // Os três mudam por onde o paciente é atendido — decisão auditável.
+  "conversation.webchat_link_sent",
+  "conversation.webchat_back_to_whatsapp",
+  "conversation.webchat_disabled",
+  "settings.webchat_updated",
   "conversation.tags_changed",
   // (migration 9062) Mudar a FILA de uma conversa é decisão auditável: quem
   // escolheu, de qual fila para qual, e se aquilo disparou redistribuição. Sem

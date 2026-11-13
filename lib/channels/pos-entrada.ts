@@ -66,6 +66,8 @@ import type { EventRow } from "@/lib/event-log/dispatcher";
 import { applyReactivityEvent, createSupabaseReactivityClient } from "@/lib/followup/reactivity";
 import { aplicarRespostaNaCampanha } from "@/lib/campanhas/resposta";
 import { marcarConversaComMensagem } from "@/lib/channels/marcar-conversa";
+import { conviteNaPrimeiraMensagem } from "@/lib/webchat/convite";
+import { ORIGEM_WEBCHAT } from "@/lib/webchat/origem";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -185,6 +187,9 @@ export async function aplicarEfeitosPosEntrada(
   await guardarOrigemDaPagina(admin, entrada);
   await abrirDemanda(admin, entrada);
   await avaliarCampanha(admin, entrada);
+  // Web Chat (migration 9348) ANTES do despacho: o convite e a rota decidem por
+  // onde a resposta do agente vai sair, e o turno lê a rota ao enviar.
+  await rotaDoWebChatNaEntrada(admin, entrada);
   const sinal = {
     organizationId: entrada.organizationId,
     contactId: entrada.contactId,
@@ -199,6 +204,54 @@ export async function aplicarEfeitosPosEntrada(
   // o agente fala (o "cliente voltou" é previsto por `deveCederTurnoAoRetorno`
   // nas duas ordens), e cada evento drenado aqui atrasava o pedido do turno.
   await drenarEventosDoInbound(admin, sinal);
+}
+
+/**
+ * Web Chat · por onde a resposta sai, e o convite da primeira mensagem.
+ *
+ * - Mensagem que veio da PÁGINA: nada a fazer aqui — a rota já virou `web` na
+ *   mesma escrita que gravou a mensagem (`fn_mark_conversation_web_message`).
+ * - Mensagem do WHATSAPP: o paciente escolheu o WhatsApp, a resposta volta por
+ *   ele (rota `whatsapp`); e se é a primeira deste atendimento, sai o convite —
+ *   que devolve a rota à página.
+ * - Outros canais (Instagram, Facebook…): o Web Chat é continuação do WhatsApp
+ *   e não se aplica.
+ *
+ * NUNCA lança, como todo passo daqui: a mensagem já está gravada.
+ */
+async function rotaDoWebChatNaEntrada(admin: Admin, entrada: EntradaDeMensagem): Promise<void> {
+  if (entrada.origem === ORIGEM_WEBCHAT) return;
+  if (entrada.canal && entrada.canal !== "whatsapp") return;
+  try {
+    // Lê antes de escrever: o caso comum (conversa já no WhatsApp) não grava
+    // nada. Erro de leitura (banco sem a 9348) = segue como sempre, sem Web Chat.
+    const { data, error } = await admin
+      .from("conversations")
+      .select("webchat_rota")
+      .eq("organization_id", entrada.organizationId)
+      .eq("id", entrada.conversationId)
+      .maybeSingle();
+    if (error) return;
+    if ((data as { webchat_rota?: string } | null)?.webchat_rota === "web") {
+      await admin
+        .from("conversations")
+        .update({ webchat_rota: "whatsapp" })
+        .eq("organization_id", entrada.organizationId)
+        .eq("id", entrada.conversationId)
+        .eq("webchat_rota", "web");
+    }
+    await conviteNaPrimeiraMensagem(admin as never, {
+      organizationId: entrada.organizationId,
+      conversationId: entrada.conversationId,
+      requestId: entrada.requestId ?? `webchat:convite:${entrada.conversationId}`,
+    });
+  } catch (err) {
+    logger.warn("[pos-entrada] Web Chat não avaliado (a mensagem segue normal)", {
+      organization_id: entrada.organizationId,
+      conversation_id: entrada.conversationId,
+      detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
+    });
+  }
 }
 
 /**

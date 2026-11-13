@@ -38,6 +38,7 @@ import {
   type ChannelSessionRef,
 } from "@/lib/channels";
 import { enderecoDaUltimaRecebida } from "@/lib/channels/endereco-da-ultima-recebida";
+import { rotaWebDoEnvio } from "@/lib/webchat/entrega";
 
 /** Único estado em que o canal pode falar agora — mesmo critério do handler de envio. */
 const SESSAO_SAUDAVEL = "WORKING";
@@ -81,6 +82,11 @@ export async function sinalizarDigitando(
 
   const conversa = data as unknown as ConversaParaPresenca | null;
   if (!conversa) return;
+
+  // Web Chat (migration 9348): o paciente está na PÁGINA, não no WhatsApp. O
+  // "digitando…" lá apareceria num app que ele não está olhando — e, no canal
+  // oficial, seria pedido com o id de uma mensagem que a plataforma nunca viu.
+  if (await rotaWebDoEnvio(supabase, input.organizationId, input.conversationId)) return;
 
   const sessao = conversa.channel_sessions;
   // Sessão fora do ar: o canal recusaria de qualquer forma, e perguntar custa

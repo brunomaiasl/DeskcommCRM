@@ -19,6 +19,8 @@ import {
   guardServiceEffect,
 } from "@/lib/atendimento/fronteira-server";
 import { logger } from "@/lib/logger";
+import { avisarSeAusente } from "@/lib/webchat/aviso";
+import { entregarNaPagina, rotaWebDoEnvio } from "@/lib/webchat/entrega";
 /**
  * Core handlers para messages (list + send).
  *
@@ -694,6 +696,19 @@ export async function sendMessageHandler(
     }
   }
 
+  // ─── Web Chat: a resposta sai pela PÁGINA? (migration 9348) ───────────────
+  //
+  // Quando o paciente está no Web Chat (link ativo e ele falou por último pela
+  // página, ou o convite acabou de sair), a mensagem não vai à Meta: a linha
+  // nasce aqui como sempre e a página a busca. Sem custo e sem janela de 24h.
+  // Modelo aprovado e grupo seguem pelo WhatsApp (modelo é justamente o que se
+  // manda para FORA da página), e o convite/aviso do próprio Web Chat forçam o
+  // WhatsApp (`ctx.rotaForcada`). Leitura tolerante: erro = WhatsApp.
+  const rotaWeb =
+    ctx.rotaForcada === "whatsapp" || input.type === "template" || c.is_group
+      ? null
+      : await rotaWebDoEnvio(supabase, ctx.organization_id, c.id);
+
   // ─── A janela de 24h, ANTES de qualquer linha nascer (#1614) ──────────────
   //
   // Em canal com hetero-restrição, texto livre só sai enquanto o cliente
@@ -711,7 +726,9 @@ export async function sendMessageHandler(
   // lugar decide o que é "janela fechada", e é ele que a tela já trata.
   if (
     (ctx.actor.type === "api_token" || ctx.actor.type === "ai_agent") &&
-    input.type !== "template"
+    input.type !== "template" &&
+    // Pela página não há janela: ela é regra da Meta, e a Meta não participa.
+    !rotaWeb
   ) {
     const janela = estadoDaJanela(
       c.channel_sessions?.provider ?? DEFAULT_CHANNEL_PROVIDER,
@@ -1141,6 +1158,17 @@ export async function sendMessageHandler(
     }).eq("organization_id", ctx.organization_id).eq("id", message.id).select(MSG_COLS).single();
     if (error || !updated) throw new ApiError(500, "internal_error", undefined, ctx.requestId, "Não foi possível registrar o bloqueio do envio.");
     message = updated as unknown as Message;
+  } else if (rotaWeb) {
+    // Web Chat: entregue pela página. Vem DEPOIS do modo de teste da IA (a
+    // proteção que o operador liga para segurar a IA vale em qualquer rota) e
+    // ANTES das checagens do canal de WhatsApp — a página não depende dele.
+    message = (await entregarNaPagina(supabase, {
+      organizationId: ctx.organization_id,
+      messageId: message.id,
+      metadataAtual: message.metadata as Record<string, unknown> | null,
+      linkId: rotaWeb.linkId,
+      colunas: MSG_COLS,
+    })) as Message;
   } else if (c.channel_sessions?.archived_at) {
     // Canal ARQUIVADO = canal excluído pelo usuário: a sessão já foi deslogada e
     // removida do transporte, e a credencial do canal oficial já foi revogada. É a
@@ -1670,6 +1698,24 @@ export async function sendMessageHandler(
   }
 
   await supabase.from("conversations").update(conversationUpdate).eq("id", c.id);
+
+  // Web Chat: o paciente saiu da página? Vai UM aviso pelo WhatsApp (no máximo
+  // um por hora). Sem `await`: o envio já terminou, e o aviso é outro envio,
+  // com a própria falha registrada — não pode atrasar nem derrubar este.
+  if (rotaWeb && message.status === "delivered" && isServiceRoleConfigured()) {
+    void avisarSeAusente(createAdminClient(), {
+      organizationId: ctx.organization_id,
+      conversationId: c.id,
+      linkId: rotaWeb.linkId,
+      requestId: ctx.requestId,
+    }).catch((err: unknown) =>
+      logger.warn("webchat: aviso de nova mensagem falhou", {
+        organization_id: ctx.organization_id,
+        conversation_id: c.id,
+        detail: err instanceof Error ? err.message.slice(0, 160) : "desconhecido",
+      }),
+    );
+  }
 
   // Envio pelo CRM não passa por `fn_mark_conversation_message` — carimba o
   // contato aqui para /app/contacts refletir a resposta (migration 0162).

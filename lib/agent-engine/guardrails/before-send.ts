@@ -146,6 +146,15 @@ export interface GateContext {
      * inteira — e aí template viraria bypass de opt-out, LGPD e horário.
      */
     isTemplate?: boolean;
+    /**
+     * A conversa está na rota WEB CHAT (migration 9348): o envio não vai à Meta,
+     * vai para a página do próprio CRM, e lá não existe janela de 24h.
+     *
+     * Só ESTE gate muda — exatamente como `isTemplate`. `stop`, `lgpd`, horário e
+     * o resto continuam valendo: a página é outro transporte, não uma licença.
+     * Ausente = falso (a direção segura: o gate segue vetando como antes).
+     */
+    rotaWeb?: boolean;
   };
   pacing: {
     knobs: PacingKnobs;
@@ -1223,6 +1232,10 @@ export const messagingWindowGate: Gate = {
     // manda usar. Vetá-lo aqui fecharia a única porta que este gate abre.
     if (ctx.messagingWindow?.isTemplate === true) return { pass: true };
 
+    // Web Chat: a resposta vai para a página, não para a Meta — não há janela a
+    // respeitar. `skipped`, para o trace provar que o gate olhou e não se aplicava.
+    if (ctx.messagingWindow?.rotaWeb === true) return { pass: true, skipped: 'not_applicable' };
+
     if (isWindowOpen(ctx.now, ctx.messagingWindow?.lastInboundAt ?? null)) return { pass: true };
 
     return {
@@ -1832,6 +1845,12 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
       args.leadId,
       args.channelSessionId,
     );
+    // Template sai sempre pelo WhatsApp (é o que vai para FORA da página), então
+    // só a mensagem livre pergunta pela rota.
+    const rotaWeb =
+      args.isTemplate === true
+        ? false
+        : await readRotaWeb(client, args.tenantId, args.leadId, args.channelSessionId);
 
     const ctx: GateContext = {
       now: args.now,
@@ -1841,7 +1860,11 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
         ? { motivoDoStop: stopDaFonte.motivo }
         : {}),
       provider,
-      messagingWindow: { lastInboundAt, ...(args.isTemplate === true ? { isTemplate: true } : {}) },
+      messagingWindow: {
+        lastInboundAt,
+        ...(args.isTemplate === true ? { isTemplate: true } : {}),
+        ...(rotaWeb ? { rotaWeb: true } : {}),
+      },
       pacing: {
         knobs: pacingCfg.knobs,
         state: pacingState,
@@ -2128,6 +2151,45 @@ async function readLastInboundAt(
     [organizationId, contactId, channelSessionId],
   );
   return rows[0]?.last_inbound_at ?? null;
+}
+
+/**
+ * A conversa deste contato, neste número, está na rota Web Chat com link ativo?
+ * Mesma régua de `lib/webchat/rota.ts` (rota `web`, não desativada, link não
+ * revogado e dentro da validade), em SQL porque aqui o cliente é o `pg`.
+ *
+ * Roda DENTRO da transação da cadeia: num banco sem a migration 9348 a consulta
+ * falha, e um erro solto envenenaria a transação inteira (toda consulta seguinte
+ * responderia "current transaction is aborted"). O savepoint isola a falha — e
+ * falha aqui é "não está no Web Chat", que é o comportamento de antes.
+ */
+async function readRotaWeb(
+  db: Queryable,
+  organizationId: string,
+  contactId: string,
+  channelSessionId: string,
+): Promise<boolean> {
+  await db.query('savepoint webchat_rota');
+  try {
+    const { rows } = await db.query<{ web: boolean }>(
+      `select exists (
+         select 1
+           from conversations c
+           join webchat_links l
+             on l.conversation_id = c.id and l.organization_id = c.organization_id
+          where c.organization_id = $1 and c.contact_id = $2 and c.channel_session_id = $3
+            and c.webchat_rota = 'web' and not c.webchat_desativado
+            and l.revoked_at is null and l.expires_at > now()
+       ) as web`,
+      [organizationId, contactId, channelSessionId],
+    );
+    await db.query('release savepoint webchat_rota');
+    return rows[0]?.web === true;
+  } catch {
+    await db.query('rollback to savepoint webchat_rota');
+    await db.query('release savepoint webchat_rota');
+    return false;
+  }
 }
 
 /** Trace estruturado: uma linha por gate avaliado (ids não são PII; corpo nunca é logado). */

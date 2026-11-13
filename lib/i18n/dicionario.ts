@@ -721,6 +721,102 @@ export const DICIONARIO: Traducoes = {
   "conflitos": {"es": "conflictos"},
   "Empresas e pessoas (venda para empresas)": {"es": "Empresas y personas (venta a empresas)"},
   "Ligado, cada empresa ganha no CRM o cadastro de Empresas (razão social e CNPJ, com os dados públicos preenchidos pela BrasilAPI), as Pessoas que decidem dentro delas, com vários telefones, e a importação de planilha CSV ou Excel. Consultar um CNPJ manda o número para a BrasilAPI. Desligado, as telas e o menu somem.": {"es": "Activado, cada empresa gana en el CRM el registro de Empresas (razón social y CNPJ, con los datos públicos completados por BrasilAPI), las Personas que deciden dentro de ellas, con varios teléfonos, y la importación de planillas CSV o Excel. Consultar un CNPJ envía el número a BrasilAPI. Desactivado, las pantallas y el menú desaparecen."},
+  // ─── WEB CHAT (migration 9348) ───
+  "Web Chat": { es: "Web Chat" },
+  "No Web Chat": { es: "En el Web Chat" },
+  "No WhatsApp": { es: "En WhatsApp" },
+  "não aberto": { es: "no abierto" },
+  "ainda não aberto": { es: "todavía no abierto" },
+  "Encerrado": { es: "Cerrado" },
+  "As respostas chegam ao paciente pela página, sem custo de mensagem.": {
+    es: "Las respuestas llegan al paciente por la página, sin costo de mensaje.",
+  },
+  "O Web Chat está desligado nesta conversa. Mandar um link religa.": {
+    es: "El Web Chat está desactivado en esta conversación. Enviar un enlace lo vuelve a activar.",
+  },
+  "As respostas saem pelo WhatsApp.": { es: "Las respuestas salen por WhatsApp." },
+  "Último link enviado": { es: "Último enlace enviado" },
+  "Voltar para o WhatsApp": { es: "Volver a WhatsApp" },
+  "Enviar outro link": { es: "Enviar otro enlace" },
+  "Enviar link": { es: "Enviar enlace" },
+  "Desativar nesta conversa": { es: "Desactivar en esta conversación" },
+  "Copiar link ativo": { es: "Copiar enlace activo" },
+  "Links desta conversa": { es: "Enlaces de esta conversación" },
+  "ativos": { es: "activos" },
+  "Web Chat salvo.": { es: "Web Chat guardado." },
+  "O paciente recebe pelo WhatsApp um link e continua a MESMA conversa numa página, por 24 horas. As mensagens na página não são cobradas pela Meta; só o convite e o aviso de nova mensagem saem pelo WhatsApp.":
+    {
+      es: "El paciente recibe por WhatsApp un enlace y sigue la MISMA conversación en una página, durante 24 horas. Meta no cobra los mensajes de la página; solo la invitación y el aviso de mensaje nuevo salen por WhatsApp.",
+    },
+  "Ligar o Web Chat": { es: "Activar el Web Chat" },
+  "Desligado, ninguém recebe link e as conversas seguem só pelo WhatsApp.": {
+    es: "Desactivado, nadie recibe enlace y las conversaciones siguen solo por WhatsApp.",
+  },
+  "Mandar o convite na primeira mensagem": { es: "Enviar la invitación en el primer mensaje" },
+  "A cada atendimento novo o paciente recebe o link sozinho. Desligado, o link sai só quando a equipe manda pela conversa.":
+    {
+      es: "En cada atención nueva el paciente recibe el enlace automáticamente. Desactivado, el enlace sale solo cuando el equipo lo envía desde la conversación.",
+    },
+  "Texto do convite": { es: "Texto de la invitación" },
+  "O link vai no fim do texto, dentro da janela de 24 horas.": {
+    es: "El enlace va al final del texto, dentro de la ventana de 24 horas.",
+  },
+  "Texto do botão do convite": { es: "Texto del botón de la invitación" },
+  "Texto do aviso de nova mensagem": { es: "Texto del aviso de mensaje nuevo" },
+  "Vai pelo WhatsApp quando chega mensagem nova e o paciente não está na página. No máximo um por hora.": {
+    es: "Sale por WhatsApp cuando llega un mensaje nuevo y el paciente no está en la página. Como máximo uno por hora.",
+  },
+  "Modelos aprovados para fora da janela de 24 horas": {
+    es: "Plantillas aprobadas para fuera de la ventana de 24 horas",
+  },
+  "Fora da janela, a Meta só aceita modelo aprovado. Crie o modelo com um botão de URL e use exatamente o endereço abaixo. Sem modelo, o convite e o aviso não saem fora da janela.":
+    {
+      es: "Fuera de la ventana, Meta solo acepta plantillas aprobadas. Cree la plantilla con un botón de URL y use exactamente la dirección de abajo. Sin plantilla, la invitación y el aviso no salen fuera de la ventana.",
+    },
+  "A instalação não tem endereço público configurado. Sem ele o paciente não consegue abrir o link.": {
+    es: "La instalación no tiene dirección pública configurada. Sin ella el paciente no puede abrir el enlace.",
+  },
+  "Modelo do convite": { es: "Plantilla de la invitación" },
+  "Modelo do aviso": { es: "Plantilla del aviso" },
+  "Sem modelo próprio, o aviso usa o do convite.": {
+    es: "Sin plantilla propia, el aviso usa la de la invitación.",
+  },
+  "Salvar Web Chat": { es: "Guardar Web Chat" },
+  "Este link expirou. Mande uma mensagem pelo WhatsApp para receber um novo.": {
+    es: "Este enlace expiró. Envíe un mensaje por WhatsApp para recibir uno nuevo.",
+  },
+  "Este link expirou": { es: "Este enlace expiró" },
+  "Carregando a conversa…": { es: "Cargando la conversación…" },
+  "Link não encontrado": { es: "Enlace no encontrado" },
+  "Confira se o link está completo, ou mande uma mensagem pelo WhatsApp para receber um novo.": {
+    es: "Verifique que el enlace esté completo, o envíe un mensaje por WhatsApp para recibir uno nuevo.",
+  },
+  "Conversa segura · o link vale por 24 horas": { es: "Conversación segura · el enlace vale por 24 horas" },
+  "Escreva sua mensagem abaixo. A gente responde por aqui.": {
+    es: "Escriba su mensaje abajo. Le respondemos por aquí.",
+  },
+  "Imagem enviada": { es: "Imagen enviada" },
+  "Não enviada": { es: "No enviado" },
+  "Escreva sua mensagem": { es: "Escriba su mensaje" },
+  "Esta mensagem passou pela página do Web Chat, não pelo WhatsApp": {
+    es: "Este mensaje pasó por la página del Web Chat, no por WhatsApp",
+  },
+  "via Web Chat": { es: "vía Web Chat" },
+  "Ação inválida.": { es: "Acción inválida." },
+  "Esta conversa está encerrada.": { es: "Esta conversación está cerrada." },
+  "O Web Chat está desligado. Ligue em Configurações › Web Chat.": {
+    es: "El Web Chat está desactivado. Actívelo en Configuración › Web Chat.",
+  },
+  "A instalação não tem endereço público configurado (NEXT_PUBLIC_APP_URL): o paciente não conseguiria abrir o link.":
+    {
+      es: "La instalación no tiene dirección pública configurada (NEXT_PUBLIC_APP_URL): el paciente no podría abrir el enlace.",
+    },
+  "A janela de 24 horas está fechada e não há modelo aprovado para o convite. Configure o modelo em Configurações › Web Chat.":
+    {
+      es: "La ventana de 24 horas está cerrada y no hay plantilla aprobada para la invitación. Configure la plantilla en Configuración › Web Chat.",
+    },
+  "Web Chat não se aplica a conversas de grupo.": { es: "El Web Chat no se aplica a conversaciones de grupo." },
+  "O link não pôde ser enviado pelo WhatsApp.": { es: "No se pudo enviar el enlace por WhatsApp." },
   // ─── BUSCA DENTRO DA CONVERSA (extraída do PR #1793) ───
   "Resultados nas mensagens carregadas": { es: "Resultados en los mensajes cargados" },
   "Buscar nesta conversa": { es: "Buscar en esta conversación" },

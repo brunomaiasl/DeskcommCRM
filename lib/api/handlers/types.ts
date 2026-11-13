@@ -125,4 +125,12 @@ export interface HandlerCtx {
    * `traduzir()`), que é o comportamento de sempre para esses dois canais.
    */
   idioma?: Idioma;
+  /**
+   * Força a saída pelo WhatsApp mesmo com a conversa na rota Web Chat
+   * (migration 9348). Só o próprio Web Chat preenche — o CONVITE e o AVISO de
+   * nova mensagem existem para chegar ao WhatsApp do paciente; desviá-los para
+   * a página que ele não está olhando seria mandar o aviso para o lugar errado.
+   * Nunca vem do corpo de uma requisição.
+   */
+  rotaForcada?: "whatsapp";
 }

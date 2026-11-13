@@ -38,6 +38,14 @@ export const PUBLIC_PATHS: RegExp[] = [
   // acima — vem de outro site, o cookie Strict não viaja, e a rota é só a ponte
   // para um destino FIXO (`app/cobranca/volta/route.ts`), sem efeito.
   /^\/cobranca\/volta$/,
+  // WEB CHAT (migration 9348): a página do paciente e as duas rotas que ela usa.
+  // O token de 43 caracteres (32 bytes em base64url, `lib/webchat/token.ts`) é a
+  // credencial — o paciente não tem conta. Organização e conversa saem da linha
+  // do link achada pelo HASH do token, nunca da requisição. Âncoras exatas:
+  // nenhum sub-path nasce público de carona.
+  /^\/chat\/[A-Za-z0-9_-]{43}$/,
+  /^\/api\/v1\/webchat\/p\/[A-Za-z0-9_-]{43}$/,
+  /^\/api\/v1\/webchat\/p\/[A-Za-z0-9_-]{43}\/mensagens$/,
   /^\/403$/,
   /^\/admin\/forbidden$/,
   /^\/404$/,
