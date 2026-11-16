@@ -375,12 +375,36 @@ export function IniciarConversaDialog({
  * `agent`, que é o que a rota exige para abrir conversa em nome da organização.
  * Quem não pode atender não vê um botão que o servidor vai recusar.
  */
-export function BotaoIniciarConversa() {
+export function BotaoIniciarConversa({ compacto = false }: { compacto?: boolean } = {}) {
   const t = useT();
   const podeIniciar = usePermission("inbox.claim");
   const [aberto, setAberto] = useState(false);
 
   if (!podeIniciar) return null;
+
+  /**
+   * COMPACTO (estilo Clinia): só o ícone, redondo, ao lado do filtro da barra de
+   * busca. Iniciar conversa é gesto raro, e a linha inteira que o botão largo
+   * ocupava no topo volta para a lista. O nome acessível continua "Iniciar
+   * conversa" — leitor de tela, atalho e teste acham o mesmo botão.
+   */
+  if (compacto) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setAberto(true)}
+          aria-label={t("Iniciar conversa")}
+          title={t("Iniciar conversa")}
+          data-testid="botao-iniciar-conversa"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full border border-transparent bg-surface-elevated text-text-muted transition-colors hover:text-text focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <ChatCircle size={16} weight="regular" aria-hidden />
+        </button>
+        <IniciarConversaDialog open={aberto} onOpenChange={setAberto} />
+      </>
+    );
+  }
 
   return (
     <>

@@ -1,6 +1,6 @@
 "use client";
 import { useT } from "@/hooks/i18n/useT";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CaretLeft, CaretRight, Funnel, MagnifyingGlass } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -178,9 +178,15 @@ interface Props {
    * provider. Ausente = organização sem Setores: o seletor não existe.
    */
   filas?: Pick<Sector, "id" | "name" | "color">[];
+  /**
+   * Ação extra na linha da busca, depois do ícone de filtro — hoje o ícone de
+   * "Iniciar conversa". Vem de fora porque o painel de iniciar consulta o
+   * servidor, e esta barra é montada em testes sem `QueryClient`.
+   */
+  acaoExtra?: ReactNode;
 }
 
-export function InboxFilters({ value, onChange, filas: filasDaOrganizacao }: Props) {
+export function InboxFilters({ value, onChange, filas: filasDaOrganizacao, acaoExtra }: Props) {
   const t = useT();
   const [searchInput, setSearchInput] = useState(value.search);
   const tabsListRef = useRef<HTMLDivElement>(null);
@@ -599,6 +605,7 @@ export function InboxFilters({ value, onChange, filas: filasDaOrganizacao }: Pro
               </span>
             )}
           </button>
+          {acaoExtra}
         </div>
 
         {/* O PAINEL DE FILTROS — fechado por padrão, escondido por CSS (ver

@@ -983,11 +983,13 @@ export function InboxLayout({
           colunas.lista,
         )}
       >
-        <BotaoIniciarConversa />
+        {/* "Iniciar conversa" virou ícone na linha da busca (estilo Clinia): a
+            linha inteira do botão largo volta para a lista de conversas. */}
         <InboxFilters
           value={filterValue}
           onChange={setFilterValue}
           filas={filasDaOrganizacao?.data ?? []}
+          acaoExtra={<BotaoIniciarConversa compacto />}
         />
         {podeAgirEmLote && (
           <BarraDeAcoesEmLote
