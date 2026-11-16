@@ -33,6 +33,7 @@ import {
   criarAgendamento,
   criarPaciente,
   descreverHorario,
+  unidadesPorLocalOuVazio,
   LIMITE_DE_BUSCA_DIAS,
   listarAgendamentosDoPaciente,
   listarEspecialidades,
@@ -217,7 +218,8 @@ export const crmFeegowNextAvailable: McpToolDefinition<typeof proximoShape> = {
   name: "crm_feegow_next_available",
   description:
     "Busca na agenda do Feegow o PRIMEIRO horário livre mais próximo para uma especialidade (e, se pedido, " +
-    "um profissional). Devolve os horários mais próximos e o primeiro horário de cada profissional. Procura até " +
+    "um profissional), em TODAS as unidades. Devolve os horários mais próximos e o primeiro horário de cada " +
+    "profissional — cada um com a UNIDADE onde é o atendimento (diga a unidade ao paciente). Procura até " +
     `${LIMITE_DE_BUSCA_DIAS} dias à frente. Use para responder "qual o horário mais próximo?". ` +
     "Ofereça as opções ao paciente; nunca agende sem ele confirmar.",
   inputSchema: proximoShape,
@@ -242,13 +244,14 @@ export const crmFeegowNextAvailable: McpToolDefinition<typeof proximoShape> = {
         };
       }
       const nomes = await nomesDosProfissionais(input.especialidade_id);
+      const unidades = await unidadesPorLocalOuVazio();
       return {
         ok: true,
         encontrou: true,
-        mais_proximos: horarios.slice(0, input.quantidade).map((h) => descreverHorario(h, nomes)),
+        mais_proximos: horarios.slice(0, input.quantidade).map((h) => descreverHorario(h, nomes, unidades)),
         primeiro_de_cada_profissional: primeiroDeCadaProfissional(horarios)
           .slice(0, 5)
-          .map((h) => descreverHorario(h, nomes)),
+          .map((h) => descreverHorario(h, nomes, unidades)),
       };
     }),
 };
@@ -296,11 +299,12 @@ export const crmFeegowAvailableSlots: McpToolDefinition<typeof horariosShape> = 
         return { ok: true, encontrou: false, mensagem: "Nenhum horário livre nesse período." };
       }
       const nomes = await nomesDosProfissionais(input.especialidade_id);
+      const unidades = await unidadesPorLocalOuVazio();
       return {
         ok: true,
         encontrou: true,
         total: horarios.length,
-        horarios: horarios.slice(0, MAX_HORARIOS_DEVOLVIDOS).map((h) => descreverHorario(h, nomes)),
+        horarios: horarios.slice(0, MAX_HORARIOS_DEVOLVIDOS).map((h) => descreverHorario(h, nomes, unidades)),
         ...(horarios.length > MAX_HORARIOS_DEVOLVIDOS
           ? { aviso: `mostrando os ${MAX_HORARIOS_DEVOLVIDOS} primeiros; restrinja o período ou o profissional` }
           : {}),
@@ -440,12 +444,13 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
       );
       if (!slot) {
         const nomes = await nomesDosProfissionais(input.especialidade_id);
+        const unidades = await unidadesPorLocalOuVazio();
         return {
           ...recusa(
             "horario_indisponivel",
             "Esse horário não está mais livre. Ofereça uma das alternativas ou busque outro dia.",
           ),
-          alternativas_no_mesmo_dia: livres.slice(0, 5).map((h) => descreverHorario(h, nomes)),
+          alternativas_no_mesmo_dia: livres.slice(0, 5).map((h) => descreverHorario(h, nomes, unidades)),
         };
       }
 
@@ -495,10 +500,11 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
       });
 
       const nomes = await nomesDosProfissionais(input.especialidade_id);
+      const unidades = await unidadesPorLocalOuVazio();
       return {
         ok: true,
         agendamento_id: criado.agendamento_id,
-        consulta: descreverHorario(slot, nomes),
+        consulta: descreverHorario(slot, nomes, unidades),
         ...(criado.link ? { link_confirmacao: criado.link } : {}),
         ...(aviso ? { aviso } : {}),
       };
@@ -588,9 +594,10 @@ export const crmFeegowRescheduleAppointment: McpToolDefinition<typeof remarcarSh
       const livres = await livresNoDia(ag.especialidade_id, ag.profissional_id, input.nova_data);
       if (!livres.some((h) => h.hora === horaCurta)) {
         const nomes = await nomesDosProfissionais(ag.especialidade_id);
+        const unidades = await unidadesPorLocalOuVazio();
         return {
           ...recusa("horario_indisponivel", "Esse horário não está livre para este profissional."),
-          alternativas_no_mesmo_dia: livres.slice(0, 5).map((h) => descreverHorario(h, nomes)),
+          alternativas_no_mesmo_dia: livres.slice(0, 5).map((h) => descreverHorario(h, nomes, unidades)),
         };
       }
 

@@ -235,6 +235,63 @@ describe("crm_feegow_next_available", () => {
     expect(r.primeiro_de_cada_profissional.map((h) => h.profissional)).toEqual(["Dra. Ana", "Dr. Beto"]);
   });
 
+  it("cada horário diz a UNIDADE (local → unidade → nome), em todas as unidades", async () => {
+    simularFeegow((c) => {
+      if (c.path === "appoints/available-schedule") {
+        // Sem unidade configurada, a busca não filtra unidade: vê todas.
+        expect(c.query.get("unidade_id")).toBeNull();
+        return ok({
+          profissional_id: {
+            "9": { local_id: { "12": { "2099-01-02": ["08:00:00"] } } },
+            "7": { local_id: { "3": { "2099-01-02": ["10:00:00"] } } },
+          },
+        });
+      }
+      if (c.path === "professional/list") return PROFISSIONAIS;
+      if (c.path === "company/list-local") {
+        return ok([
+          { id: 3, local: "Sala 01", unidade_id: 0 },
+          { id: 12, local: "Consultório 2", unidade_id: 2 },
+        ]);
+      }
+      if (c.path === "company/list-unity") {
+        return ok({
+          matriz: [{ unidade_id: 0, nome_fantasia: "Padre Anchieta - Campinas" }],
+          unidades: [{ unidade_id: 2, nome_fantasia: "Matão - Sumaré" }],
+        });
+      }
+      return undefined;
+    });
+    const r = (await executar(crmFeegowNextAvailable, {
+      especialidade_id: 95,
+      quantidade: 2,
+      a_partir_de: "2099-01-01",
+    })) as { mais_proximos: Array<{ profissional: string; hora: string; unidade: string | null }> };
+
+    expect(r.mais_proximos.map((h) => [h.profissional, h.hora, h.unidade])).toEqual([
+      ["Dr. Beto", "08:00", "Matão - Sumaré"],
+      ["Dra. Ana", "10:00", "Padre Anchieta - Campinas"],
+    ]);
+  });
+
+  it("sem a lista de locais, o horário sai do mesmo jeito (unidade nula)", async () => {
+    simularFeegow((c) => {
+      if (c.path === "appoints/available-schedule") {
+        return ok({ profissional_id: { "7": { local_id: { "3": { "2099-01-02": ["10:00:00"] } } } } });
+      }
+      if (c.path === "professional/list") return PROFISSIONAIS;
+      if (c.path.startsWith("company/")) return { status: 500, body: { success: false } };
+      return undefined;
+    });
+    const r = (await executar(crmFeegowNextAvailable, {
+      especialidade_id: 95,
+      quantidade: 1,
+      a_partir_de: "2099-01-01",
+    })) as { encontrou: boolean; mais_proximos: Array<{ hora: string; unidade: string | null }> };
+    expect(r.encontrou).toBe(true);
+    expect(r.mais_proximos[0]).toMatchObject({ hora: "10:00", unidade: null });
+  });
+
   it("agenda fora do ar volta como resposta ao modelo, não exceção", async () => {
     simularFeegow(() => ({ status: 503, body: {} }));
     const r = (await executar(crmFeegowNextAvailable, { especialidade_id: 95, quantidade: 3 })) as {

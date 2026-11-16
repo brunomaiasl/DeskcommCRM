@@ -77,6 +77,74 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// ─── unidades ───────────────────────────────────────────────────────────────
+
+export interface UnidadeDoLocal {
+  unidade_id: number;
+  /** O nome fantasia da unidade no Feegow (ex.: "Padre Anchieta - Campinas"). */
+  nome: string;
+}
+
+/**
+ * De qual UNIDADE é cada local — para o agente dizer "às 9h, na unidade X".
+ *
+ * O horário da agenda vem com `local_id` (a sala), e a sala pertence a uma
+ * unidade (`company/list-local`); o nome da unidade vem de `company/list-unity`
+ * (matriz + filiais). As duas listas mudam pouco: cache de 10 minutos.
+ */
+export async function unidadesPorLocal(): Promise<Map<number, UnidadeDoLocal>> {
+  return comCache("unidades-por-local", async () => {
+    const [locaisBrutos, unidadesBrutas] = await Promise.all([
+      feegowGet<unknown>("company/list-local"),
+      feegowGet<unknown>("company/list-unity"),
+    ]);
+
+    const nomeDaUnidade = new Map<number, string>();
+    const blocos =
+      unidadesBrutas && typeof unidadesBrutas === "object" && !Array.isArray(unidadesBrutas)
+        ? [
+            (unidadesBrutas as { matriz?: unknown }).matriz,
+            (unidadesBrutas as { unidades?: unknown }).unidades,
+          ]
+        : [unidadesBrutas];
+    for (const bloco of blocos) {
+      if (!Array.isArray(bloco)) continue;
+      for (const u of bloco) {
+        const id = num((u as { unidade_id?: unknown }).unidade_id);
+        const nome = (u as { nome_fantasia?: unknown }).nome_fantasia;
+        if (id !== null && typeof nome === "string" && nome.trim()) nomeDaUnidade.set(id, nome.trim());
+      }
+    }
+
+    const porLocal = new Map<number, UnidadeDoLocal>();
+    if (Array.isArray(locaisBrutos)) {
+      for (const l of locaisBrutos) {
+        const localId = num((l as { id?: unknown }).id);
+        const unidadeId = num((l as { unidade_id?: unknown }).unidade_id);
+        if (localId === null || unidadeId === null) continue;
+        porLocal.set(localId, {
+          unidade_id: unidadeId,
+          nome: nomeDaUnidade.get(unidadeId) ?? `Unidade ${unidadeId}`,
+        });
+      }
+    }
+    return porLocal;
+  });
+}
+
+/**
+ * `unidadesPorLocal` que NUNCA derruba a busca de horário: sem a lista (rota
+ * fora do ar, token sem permissão para ela), o horário sai sem o nome da
+ * unidade — melhor do que o paciente ficar sem horário nenhum.
+ */
+export async function unidadesPorLocalOuVazio(): Promise<Map<number, UnidadeDoLocal>> {
+  try {
+    return await unidadesPorLocal();
+  } catch {
+    return new Map();
+  }
+}
+
 // ─── especialidades e profissionais ─────────────────────────────────────────
 
 export async function listarEspecialidades(termo?: string): Promise<Especialidade[]> {
@@ -264,11 +332,21 @@ export async function primeirosHorarios(
   return { horarios: [], buscou_ate: buscouAte };
 }
 
-/** Forma que o modelo lê: data por extenso, nome do profissional, sem ids soltos. */
-export function descreverHorario(h: Horario, nomes: Map<number, string>) {
+/**
+ * Forma que o modelo lê: data por extenso, nome do profissional e da UNIDADE,
+ * sem ids soltos. `unidade` é `null` só quando a lista de locais não veio.
+ */
+export function descreverHorario(
+  h: Horario,
+  nomes: Map<number, string>,
+  unidades: Map<number, UnidadeDoLocal> = new Map(),
+) {
+  const unidade = unidades.get(h.local_id) ?? null;
   return {
     profissional_id: h.profissional_id,
     profissional: nomes.get(h.profissional_id) ?? `Profissional ${h.profissional_id}`,
+    unidade: unidade?.nome ?? null,
+    unidade_id: unidade?.unidade_id ?? null,
     local_id: h.local_id,
     data: h.data,
     hora: h.hora,
