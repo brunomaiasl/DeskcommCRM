@@ -168,8 +168,11 @@ oficial do WhatsApp; o caminho certo é `/admin/meta`.
 
 ## 9. Feegow
 
-Código presente, **desligado** (sem `FEEGOW_API_TOKEN`). Guia em
-`docs/integrations/feegow.md`. O token vence a cada ~3 meses.
+Código presente, desligado até o token ser informado. O token (vence a cada ~3
+meses) é colado em **Admin › Configuração da instalação** › "Agenda da clínica
+(Feegow)" — cifrado, vale em até 30 s, sem reiniciar. Depois, ligar o pacote
+"Agendar na agenda da clínica" nas capacidades do agente. Guia em
+`docs/integrations/feegow.md`.
 
 ## 10. Pendências e segurança
 

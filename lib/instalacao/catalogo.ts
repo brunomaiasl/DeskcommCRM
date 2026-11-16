@@ -171,6 +171,48 @@ export const CATALOGO_DA_INSTALACAO: readonly ChaveDaInstalacao[] = [
     controle: "edita",
   },
 
+  // ── AGENDA DA CLÍNICA (FEEGOW) ────────────────────────────────────────────
+  // O token do Feegow VENCE a cada ~3 meses: renovar pela tela, sem SSH nem
+  // reinício. Quem lê é `carregarFeegowConfig` (lib/feegow/config.ts), pelo
+  // resolvedor — o banco vence, o `.env` fica de reserva. Vale em até 30 s no
+  // app e no worker (`MEMO_DO_FEEGOW_MS`).
+  {
+    chave: "FEEGOW_API_TOKEN",
+    rotulo: "Token da API do Feegow",
+    explicacao:
+      "Liga o agente à agenda da clínica no Feegow (buscar horários, marcar, remarcar, desmarcar). Quem gera é o usuário master no Feegow Clinic. Vence a cada cerca de 3 meses: cole o novo aqui.",
+    grupo: "integracao",
+    natureza: "segredo",
+    controle: "edita",
+  },
+  {
+    chave: "FEEGOW_TOKEN_EXPIRES_AT",
+    rotulo: "Vencimento do token do Feegow",
+    explicacao:
+      "A data em que o token vence, no formato AAAA-MM-DD (ex.: 2027-02-12). O Feegow não avisa: com a data aqui, o sistema registra o aviso 14 dias antes.",
+    grupo: "integracao",
+    natureza: "texto",
+    controle: "edita",
+  },
+  {
+    chave: "FEEGOW_UNIDADE_ID",
+    rotulo: "Unidade do Feegow",
+    explicacao:
+      "O número da unidade em que o agente busca horários (0 = unidade principal). Vazio = todas as unidades.",
+    grupo: "integracao",
+    natureza: "numero",
+    controle: "edita",
+  },
+  {
+    chave: "FEEGOW_CANAL_ID",
+    rotulo: "Canal de agendamento no Feegow",
+    explicacao:
+      "O número do canal \"WhatsApp\" cadastrado no Feegow, gravado em cada consulta marcada pelo agente. Vazio = sem canal.",
+    grupo: "integracao",
+    natureza: "numero",
+    controle: "edita",
+  },
+
   // ── COBRANÇA DOS SEUS CLIENTES (spec cobrança do revendedor §10) ─────────
   // Moram em /admin/cobranca. A Conexão é a ÚNICA escritora do provedor e das
   // credenciais (confere a chave, registra o webhook, recusa trocar o provedor

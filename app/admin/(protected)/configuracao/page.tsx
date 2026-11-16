@@ -48,6 +48,12 @@ const ORDEM: readonly {
     titulo: "WhatsApp",
     resumo: "As senhas que ligam o sistema ao programa que conecta o WhatsApp.",
   },
+  {
+    grupo: "integracao",
+    titulo: "Agenda da clínica (Feegow)",
+    resumo:
+      "O token do Feegow vence a cada cerca de 3 meses. Cole o novo aqui: vale em até 30 segundos, sem reiniciar o servidor.",
+  },
   { grupo: "banco", titulo: "Banco de dados", resumo: "Onde ficam todos os seus dados." },
   { grupo: "fila", titulo: "Fila de tarefas", resumo: "Controla o ritmo dos envios." },
   {

@@ -13,7 +13,7 @@
  */
 import { logger } from "@/lib/logger";
 
-import { diasParaVencerToken, getFeegowConfig, type FeegowConfig } from "./config";
+import { carregarFeegowConfig, diasParaVencerToken, type FeegowConfig } from "./config";
 
 export type FeegowErrorKind =
   | "nao_configurado"
@@ -56,8 +56,8 @@ function avisarSeTokenPertoDeVencer(cfg: FeegowConfig): void {
   ultimoAvisoDeVencimento = agora;
   logger.warn(
     dias < 0
-      ? "feegow: token vencido — renove FEEGOW_API_TOKEN e reinicie o app"
-      : `feegow: token vence em ${dias} dia(s) — renove FEEGOW_API_TOKEN`,
+      ? "feegow: token vencido — cole o novo em Admin › Configuração da instalação"
+      : `feegow: token vence em ${dias} dia(s) — renove em Admin › Configuração da instalação`,
     { dias_para_vencer: dias },
   );
 }
@@ -152,11 +152,11 @@ async function uma<T>(cfg: FeegowConfig, metodo: "GET" | "POST", path: string, o
 }
 
 async function requisitar<T>(metodo: "GET" | "POST", path: string, opts: RequestOptions): Promise<T> {
-  const cfg = getFeegowConfig();
+  const cfg = await carregarFeegowConfig();
   if (!cfg) {
     throw new FeegowError(
       "nao_configurado",
-      "a integração com o Feegow não está configurada (falta FEEGOW_API_TOKEN)",
+      "a integração com o Feegow não está configurada (falta o token em Admin › Configuração da instalação)",
     );
   }
   avisarSeTokenPertoDeVencer(cfg);

@@ -13,6 +13,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// O token agora vem do RESOLVEDOR da instalação (banco primeiro, `.env` de
+// reserva). Aqui o "banco" está vazio: o resolvedor devolve o que o ambiente
+// tem — que é o que cada caso configura em `process.env`.
+vi.mock("@/lib/instalacao/config", () => ({
+  valorDaInstalacao: async (chave: string) => ({
+    valor: process.env[chave] ?? null,
+    fonte: process.env[chave] ? "ambiente" : "ausente",
+  }),
+}));
+
+import { esquecerFeegowConfig } from "@/lib/feegow/config";
 import {
   limparCacheDoFeegow,
   normalizarDisponibilidade,
@@ -87,11 +98,13 @@ beforeEach(() => {
   delete process.env.FEEGOW_CANAL_ID;
   delete process.env.FEEGOW_UNIDADE_ID;
   limparCacheDoFeegow();
+  esquecerFeegowConfig();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.FEEGOW_API_TOKEN;
+  esquecerFeegowConfig();
 });
 
 // ─── datas ──────────────────────────────────────────────────────────────────

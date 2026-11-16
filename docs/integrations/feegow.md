@@ -10,14 +10,18 @@ completa da API: [feegow-api.md](feegow-api.md).
 ## Ativar
 
 1. No Feegow Clinic, o usuário master libera o token de API.
-2. No servidor (Hostinger), defina as variáveis e reinicie o app:
+2. No sistema, como administrador da plataforma: **Admin › Configuração da
+   instalação** (`/admin/configuracao`), quadro **"Agenda da clínica
+   (Feegow)"**:
+   - **Token da API do Feegow** — guardado cifrado; a tela mostra só os 4
+     últimos caracteres;
+   - **Vencimento do token** (AAAA-MM-DD, opcional) — avisa no log 14 dias antes;
+   - **Unidade** (opcional: 0 = principal, vazio = todas);
+   - **Canal de agendamento** (opcional: canal "WhatsApp" do Feegow).
 
-   ```env
-   FEEGOW_API_TOKEN=<token>
-   FEEGOW_TOKEN_EXPIRES_AT=2027-02-12   # opcional: avisa no log 14 dias antes
-   FEEGOW_CANAL_ID=                     # opcional: canal "WhatsApp" do Feegow
-   FEEGOW_UNIDADE_ID=                   # opcional: 0 = principal, vazio = todas
-   ```
+   Vale em até 30 segundos, no app e no worker, **sem reiniciar**. As variáveis
+   `FEEGOW_*` do `.env` continuam aceitas como reserva — o que foi salvo na tela
+   vence.
 
 3. Na tela do agente (IA → Agentes → capacidades), ligue o pacote
    **Agendar na agenda da clínica** e publique o agente.
@@ -46,7 +50,7 @@ o mesmo fim em regras que não passam pela IA.
 O token vence. Quando vence, o agente passa a dizer ao paciente que a agenda
 está indisponível e passa para uma pessoa (pelo caminho acima) — e o log
 registra `feegow: integração sem acesso`. Para renovar: gere um token novo no
-Feegow, troque `FEEGOW_API_TOKEN` (e `FEEGOW_TOKEN_EXPIRES_AT`) e reinicie o app.
+Feegow e cole em **Admin › Configuração da instalação** (atualize também o vencimento). Sem reiniciar nada.
 
 ## O que o agente consegue fazer
 

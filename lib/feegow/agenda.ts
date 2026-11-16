@@ -6,7 +6,7 @@
  * dá para testar sem montar contexto de agente.
  */
 import { feegowGet, feegowPost, FeegowError } from "./client";
-import { getFeegowConfig } from "./config";
+import { carregarFeegowConfig } from "./config";
 import {
   agoraEmSaoPaulo,
   dataLegivel,
@@ -80,7 +80,7 @@ function num(v: unknown): number | null {
 // ─── especialidades e profissionais ─────────────────────────────────────────
 
 export async function listarEspecialidades(termo?: string): Promise<Especialidade[]> {
-  const cfg = getFeegowConfig();
+  const cfg = await carregarFeegowConfig();
   const todas = await comCache("especialidades", async () => {
     const bruto = await feegowGet<unknown>("specialties/list", {
       unidade_id: cfg?.unidadeId ?? undefined,
@@ -113,7 +113,7 @@ export async function listarProfissionais(opcoes: {
   especialidade_id?: number;
   termo?: string;
 } = {}): Promise<Profissional[]> {
-  const cfg = getFeegowConfig();
+  const cfg = await carregarFeegowConfig();
   const chave = `profissionais:${opcoes.especialidade_id ?? "todas"}`;
   const todos = await comCache(chave, async () => {
     const bruto = await feegowGet<unknown>("professional/list", {
@@ -213,7 +213,7 @@ export interface FiltroDeHorarios {
 
 /** Uma consulta à agenda, já sem horários que ficaram no passado (relógio de SP). */
 export async function buscarHorarios(f: FiltroDeHorarios): Promise<Horario[]> {
-  const cfg = getFeegowConfig();
+  const cfg = await carregarFeegowConfig();
   const porProcedimento = f.procedimento_id !== undefined && f.especialidade_id === undefined;
   if (!porProcedimento && f.especialidade_id === undefined) {
     throw new FeegowError("validacao", "informe a especialidade ou o procedimento");
@@ -295,7 +295,7 @@ export async function valorDoProcedimento(opcoes: {
   profissional_id?: number;
   paciente_id?: number;
 }): Promise<number | null> {
-  const cfg = getFeegowConfig();
+  const cfg = await carregarFeegowConfig();
   const bruto = await feegowGet<unknown>("procedures/list", {
     procedimento_id: opcoes.procedimento_id,
     especialidade_id: opcoes.especialidade_id,
@@ -468,7 +468,7 @@ export async function criarAgendamento(dados: {
   email?: string;
   retorno?: boolean;
 }): Promise<{ agendamento_id: number; link: string | null }> {
-  const cfg = getFeegowConfig();
+  const cfg = await carregarFeegowConfig();
   const comConvenio = dados.convenio_id !== undefined;
   const conteudo = await feegowPost<{ agendamento_id?: unknown; link?: unknown }>("appoints/new-appoint", {
     local_id: dados.local_id,
