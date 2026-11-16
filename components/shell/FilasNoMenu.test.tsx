@@ -31,13 +31,16 @@ import { fireEvent } from "@testing-library/react";
 import { FilasNoMenu, ordenarFilas } from "@/components/shell/FilasNoMenu";
 
 describe("ordem das filas no menu", () => {
-  it("Lead Campanhas vai sempre para o topo, sem depender de acento ou caixa", () => {
-    const filas = [{ name: "Agendamentos" }, { name: "Ouvidoria" }, { name: "  LEAD   campanhas " }];
-    expect(ordenarFilas(filas).map((f) => f.name.trim())).toEqual([
-      "LEAD   campanhas",
-      "Agendamentos",
-      "Ouvidoria",
-    ]);
+  it("Leads Anúncios vai sempre para o topo, sem depender de acento ou caixa", () => {
+    const filas = [{ name: "Agendamentos" }, { name: "Ouvidoria" }, { name: "Leads Anuncios" }];
+    expect(ordenarFilas(filas).map((f) => f.name)).toEqual(["Leads Anuncios", "Agendamentos", "Ouvidoria"]);
+    const comAcento = [{ name: "Ouvidoria" }, { name: "  LEADS   Anúncios " }];
+    expect(ordenarFilas(comAcento)[0]!.name).toBe("  LEADS   Anúncios ");
+  });
+
+  it("Lead Campanhas continua aceito como o nome da fila fixa", () => {
+    const filas = [{ name: "Agendamentos" }, { name: "Lead Campanhas" }];
+    expect(ordenarFilas(filas)[0]!.name).toBe("Lead Campanhas");
   });
 
   it("sem a fila fixa, a ordem da rota fica como está", () => {

@@ -15,11 +15,13 @@ import { cn } from "@/lib/utils";
 const CHAVE_FILAS_RECOLHIDAS = "sidebar-filas-recolhidas";
 
 /**
- * A fila que fica SEMPRE em primeiro: a porta de entrada dos leads de campanha
- * (anúncio → automação → fila). Casada pelo NOME, sem acento nem caixa, para a
- * clínica criá-la em Equipe › Setores sem configurar mais nada.
+ * A fila que fica SEMPRE em primeiro: a porta de entrada dos leads de anúncio
+ * (Meta Ads, Google Ads, grupos de WhatsApp… → automação "Definir o setor da
+ * conversa" → fila). Casada pelo NOME, sem acento nem caixa, para a clínica
+ * criá-la em Equipe › Setores sem configurar mais nada. "Lead Campanhas" ficou
+ * como sinônimo: foi o primeiro nome combinado.
  */
-export const FILA_FIXA_NO_TOPO = "lead campanhas";
+export const FILAS_FIXAS_NO_TOPO = ["leads anuncios", "lead anuncios", "lead campanhas", "leads campanhas"];
 
 function normalizar(nome: string): string {
   return nome
@@ -31,13 +33,12 @@ function normalizar(nome: string): string {
 }
 
 /**
- * A ordem do menu: "Lead Campanhas" primeiro (se existir), o resto na ordem que
+ * A ordem do menu: "Leads Anúncios" primeiro (se existir), o resto na ordem que
  * a rota devolveu. Ordenação estável — só a fila fixa muda de lugar.
  */
 export function ordenarFilas<T extends Pick<Sector, "name">>(filas: readonly T[]): T[] {
-  const fixa = filas.filter((f) => normalizar(f.name) === FILA_FIXA_NO_TOPO);
-  const resto = filas.filter((f) => normalizar(f.name) !== FILA_FIXA_NO_TOPO);
-  return [...fixa, ...resto];
+  const ehFixa = (f: T) => FILAS_FIXAS_NO_TOPO.includes(normalizar(f.name));
+  return [...filas.filter(ehFixa), ...filas.filter((f) => !ehFixa(f))];
 }
 
 /**
