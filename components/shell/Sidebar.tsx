@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { ContadorDeCasos } from "@/components/shell/ContadorDeCasos";
 import { ContadorDaFila } from "@/components/shell/ContadorDaFila";
+import { FilasNoMenu } from "@/components/shell/FilasNoMenu";
 import { ContadorDeTarefas } from "@/components/shell/ContadorDeTarefas";
 import { VersionFooter } from "@/components/shell/VersionFooter";
 import { LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
@@ -52,6 +53,7 @@ export function SidebarContent({
    * por intenção (ponteiro/foco) — ver `hooks/navigation/prefetchPorIntencao.ts`.
    */
   const intencao = usePrefetchPorIntencao();
+  const setoresLigados = (activeOrg?.modulos_ligados ?? []).includes("setores");
   const todos = sidebarGroups(
     user.is_platform_admin && !user.support,
     activeOrg?.role ?? null,
@@ -396,6 +398,11 @@ export function SidebarContent({
                       </li>
                     );
                   })}
+                  {/* As FILAS ficam logo abaixo dos destinos de Atendimento. Só com
+                      o módulo Setores ligado e o menu aberto (ver `FilasNoMenu`). */}
+                  {group.id === "atendimento" && !collapsed && setoresLigados && (
+                    <FilasNoMenu onNavigate={onNavigate} />
+                  )}
                   {group.hub && (
                     <li>
                       <Link

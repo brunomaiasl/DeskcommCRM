@@ -21136,6 +21136,21 @@ export const DICIONARIO: Traducoes = {
   "Nenhuma fila cadastrada.": { es: "Ninguna fila registrada." },
   "Movendo…": { es: "Moviendo…" },
   "Conversa movida para a fila.": { es: "Conversación movida a la fila." },
+  "Conversa transferida para a fila": { es: "Conversación transferida a la fila" },
+  "Conversa transferida de": { es: "Conversación transferida de" },
+  "Conversa transferida para": { es: "Conversación transferida a" },
+  "Por": { es: "Por" },
+  "A conversa sai de quem está com ela e passa a esperar na fila escolhida, até alguém da fila atender. A mudança fica registrada no histórico.": {
+    es: "La conversación sale de quien la tiene y pasa a esperar en la fila elegida, hasta que alguien de la fila la atienda. El cambio queda registrado en el historial.",
+  },
+  "Não foi possível transferir a conversa para a fila.": {
+    es: "No fue posible transferir la conversación a la fila.",
+  },
+  "Transferir para a fila": { es: "Transferir a la fila" },
+  "Filas": { es: "Filas" },
+  "1 conversa esperando": { es: "1 conversación esperando" },
+  "conversas esperando": { es: "conversaciones esperando" },
+  "Conversa transferida para a fila.": { es: "Conversación transferida a la fila." },
   "Não foi possível mover a conversa de fila.": {
     es: "No se pudo mover la conversación de fila.",
   },

@@ -12,6 +12,9 @@ import { MessageBubble } from "./MessageBubble";
 import { separarReacoes } from "@/lib/inbox/reacoes-no-fio";
 import { NoteCard } from "./NoteCard";
 import { PassagemCard } from "./PassagemCard";
+import { TransferenciaLinha } from "./TransferenciaLinha";
+import { useTransferenciasDaConversa } from "@/hooks/inbox/useTransferenciasDaConversa";
+import type { TransferenciaDoFio } from "@/lib/inbox/transferencias-da-conversa";
 import { useThreadAutoScroll } from "@/hooks/inbox/useThreadAutoScroll";
 import { useMessagesRealtime } from "@/hooks/inbox/useMessagesRealtime";
 import { useConversationNotes } from "@/hooks/inbox/useConversationNotes";
@@ -61,7 +64,10 @@ interface Props {
 export type ThreadItem =
   | { kind: "message"; ts: string; data: Message }
   | { kind: "note"; ts: string; data: Note }
-  | { kind: "passagem"; ts: string; data: CartaoDaPassagem };
+  | { kind: "passagem"; ts: string; data: CartaoDaPassagem }
+  // Quarto tipo: a TRANSFERÊNCIA ("Conversa transferida para X · Por Y às 15:35").
+  // Rastro interno, nunca vai ao cliente.
+  | { kind: "transferencia"; ts: string; data: TransferenciaDoFio };
 
 /** Intercala mensagens, notas e passagens por timestamp asc (puro, sem I/O — testado em thread-merge.test.ts). */
 export function mergeThreadItems(
@@ -70,11 +76,14 @@ export function mergeThreadItems(
   // Opcional porque o fio existe desde antes da passagem, e uma conversa que
   // nunca saiu do automático não tem nenhuma.
   passagens: CartaoDaPassagem[] = [],
+  // Opcional pelo mesmo motivo: conversa que nunca foi transferida não tem nenhuma.
+  transferencias: TransferenciaDoFio[] = [],
 ): ThreadItem[] {
   const items: ThreadItem[] = [
     ...messages.map((data): ThreadItem => ({ kind: "message", ts: data.sent_at, data })),
     ...notes.map((data): ThreadItem => ({ kind: "note", ts: data.created_at, data })),
     ...passagens.map((data): ThreadItem => ({ kind: "passagem", ts: data.criadoEm, data })),
+    ...transferencias.map((data): ThreadItem => ({ kind: "transferencia", ts: data.em, data })),
   ];
   // Sort estável (Array#sort é estável no V8/Node): empate mantém a ordem de
   // inserção acima — mensagens antes de notas no mesmo instante, e a passagem
@@ -105,6 +114,7 @@ export function ChatThread({
   const q = useMessagesRealtime(conversationId);
   const notes = useConversationNotes(conversationId);
   const passagens = usePassagensDaConversa(conversationId);
+  const transferencias = useTransferenciasDaConversa(conversationId);
   const claim = useClaimConversation();
   const activeOrg = useActiveOrg();
   const currentUser = useUser();
@@ -169,8 +179,8 @@ export function ChatThread({
   const { falas, reacoesPorAlvo } = useMemo(() => separarReacoes(messages), [messages]);
 
   const items: ThreadItem[] = useMemo(
-    () => mergeThreadItems(falas, notes, cartoes),
-    [falas, notes, cartoes],
+    () => mergeThreadItems(falas, notes, cartoes, transferencias),
+    [falas, notes, cartoes, transferencias],
   );
 
   const lastItem = items[items.length - 1];
@@ -313,7 +323,9 @@ export function ChatThread({
               </span>
             </div>
             {g.items.map((item) =>
-              item.kind === "passagem" ? (
+              item.kind === "transferencia" ? (
+                <TransferenciaLinha key={`transf-${item.data.id}`} transferencia={item.data} />
+              ) : item.kind === "passagem" ? (
                 <PassagemCard
                   key={`passagem-${item.data.id}`}
                   cartao={item.data}

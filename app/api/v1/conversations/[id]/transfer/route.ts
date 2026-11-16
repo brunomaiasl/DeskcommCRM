@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
 import { registrarTrocaDeComando } from "@/lib/inbox/atividade-de-comando";
+import { registrarTransferenciaNaConversa } from "@/lib/inbox/transferencias-da-conversa";
 import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
@@ -86,11 +87,14 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   // Se falhar, a transferência segue e a auditoria só não leva o par.
   const { data: antes } = await supabase
     .from("conversations")
-    .select("channel_session_id")
+    .select("channel_session_id, assigned_to_user_id")
     .eq("id", id)
     .eq("organization_id", orgId)
     .maybeSingle();
   const numeroAnterior = (antes as { channel_session_id: string | null } | null)?.channel_session_id;
+  // Quem estava com a conversa ANTES — o fio diz "de Fulano para Beltrana".
+  const donoAnterior =
+    (antes as { assigned_to_user_id: string | null } | null)?.assigned_to_user_id ?? null;
 
   const { data, error } = await supabase.rpc("fn_conversation_assign", {
     p_organization_id: orgId,
@@ -130,6 +134,24 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
       ...(numeroAnterior !== undefined
         ? { numero_anterior: numeroAnterior, numero_novo: conv.channel_session_id }
         : {}),
+    },
+  });
+
+  // O fio da conversa: a linha "Fulano transferiu para Beltrana" (rastro — falhar
+  // aqui não desfaz a transferência). Ver `lib/inbox/transferencias-da-conversa`.
+  await registrarTransferenciaNaConversa({
+    supabase,
+    organizationId: orgId,
+    conversationId: id,
+    entrada: {
+      id: randomUUID(),
+      em: new Date().toISOString(),
+      por_user_id: user.id,
+      de_user_id: donoAnterior,
+      para_user_id: input.to_user_id,
+      para_fila_id: null,
+      para_fila_nome: null,
+      motivo: input.reason?.trim() || null,
     },
   });
 

@@ -38,6 +38,7 @@ vi.mock("@/hooks/inbox/useMessagesRealtime", () => ({
   }),
 }));
 vi.mock("@/hooks/inbox/useConversationNotes", () => ({ useConversationNotes: () => [] }));
+vi.mock("@/hooks/inbox/useTransferenciasDaConversa", () => ({ useTransferenciasDaConversa: () => [] }));
 vi.mock("@/hooks/inbox/usePassagensDaConversa", () => ({
   usePassagensDaConversa: () => estado.passagens,
 }));

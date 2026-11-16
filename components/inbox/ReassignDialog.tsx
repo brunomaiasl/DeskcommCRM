@@ -26,17 +26,23 @@ import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useContinuarPorOutroNumero } from "@/hooks/inbox/useContinuarPorOutroNumero";
 import { useNumeroDaTransferencia } from "@/hooks/inbox/useNumeroDaTransferencia";
 import { useTransferConversation } from "@/hooks/inbox/useTransferConversation";
+import { TransferirParaFila } from "@/components/inbox/TransferirParaFila";
+import { cn } from "@/lib/utils";
 import { nomeDoCanal } from "@/lib/channels/estado";
 import { outrosNumerosDoContato } from "@/lib/inbox/outros-numeros";
 import { rotuloDoMembro } from "@/lib/users/rotulo-do-atendente";
 
-export type AbaDeTransferencia = "atendente" | "numero";
+export type AbaDeTransferencia = "fila" | "atendente" | "numero";
 
 interface Props {
   conversationId: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** Aba em que o diálogo abre. A faixa de número fora do ar abre em "numero". */
+  /**
+   * Aba em que o diálogo abre. A faixa de número fora do ar abre em "numero".
+   * Sem isto, abre em "fila" quando o módulo Setores está ligado (transferir é
+   * mandar para a fila do setor) e em "atendente" quando não está.
+   */
   abaInicial?: AbaDeTransferencia;
   /**
    * O que a aba Número precisa. Sem `numero`, a aba não aparece — é o caso de
@@ -72,18 +78,22 @@ export function ReassignDialog({
   conversationId,
   open,
   onOpenChange,
-  abaInicial = "atendente",
+  abaInicial,
   numero,
 }: Props) {
   const t = useT();
-  const { user } = useAuth();
+  const { user, activeOrg } = useAuth();
+  // Setores é módulo opcional (doc 213): desligado, a aba Fila não existe e o
+  // diálogo é o de sempre — transferir para uma pessoa.
+  const setoresLigados = (activeOrg?.modulos_ligados ?? []).includes("setores");
+  const abaPadrao: AbaDeTransferencia = abaInicial ?? (setoresLigados ? "fila" : "atendente");
   const members = useAssignableMembers(open);
   const transfer = useTransferConversation();
   const continuar = useContinuarPorOutroNumero();
   const { data: sessoes } = useChannelSessions({ enabled: open && numero != null });
   const [toUserId, setToUserId] = useState<string>("");
   const [reason, setReason] = useState("");
-  const [aba, setAba] = useState<AbaDeTransferencia>(abaInicial);
+  const [aba, setAba] = useState<AbaDeTransferencia>(abaPadrao);
   const [paraSessao, setParaSessao] = useState<string>("");
 
   const options = (members.data ?? []).filter((m) => m.user_id !== user.id);
@@ -100,14 +110,20 @@ export function ReassignDialog({
   const destino = options.find((m) => m.user_id === toUserId);
   const numeros = numero ? outrosNumerosDoContato(sessoes, numero.channelSessionId) : [];
   const temAbaNumero = numero != null && numeros.length > 0;
-  const abaAtual = temAbaNumero ? aba : "atendente";
+  const abaAtual: AbaDeTransferencia =
+    aba === "fila" && setoresLigados
+      ? "fila"
+      : aba === "numero" && temAbaNumero
+        ? "numero"
+        : "atendente";
+  const quantasAbas = (setoresLigados ? 1 : 0) + 1 + (temAbaNumero ? 1 : 0);
 
   function close(v: boolean) {
     if (!v) {
       setToUserId("");
       setReason("");
       setParaSessao("");
-      setAba(abaInicial);
+      setAba(abaPadrao);
     }
     onOpenChange(v);
   }
@@ -131,23 +147,38 @@ export function ReassignDialog({
         <DialogHeader>
           <DialogTitle>{t("Transferir conversa")}</DialogTitle>
           <DialogDescription>
-            {t(
-              "A transferência é imediata: o atendente escolhido vira o responsável agora e a mudança fica registrada no histórico.",
-            )}
+            {abaAtual === "fila"
+              ? t(
+                  "A conversa sai de quem está com ela e passa a esperar na fila escolhida, até alguém da fila atender. A mudança fica registrada no histórico.",
+                )
+              : t(
+                  "A transferência é imediata: o atendente escolhido vira o responsável agora e a mudança fica registrada no histórico.",
+                )}
           </DialogDescription>
         </DialogHeader>
 
-        {temAbaNumero && (
+        {(setoresLigados || temAbaNumero) && (
           <Tabs value={abaAtual} onValueChange={(v) => setAba(v as AbaDeTransferencia)}>
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className={cn("grid w-full", quantasAbas === 3 ? "grid-cols-3" : "grid-cols-2")}>
+              {setoresLigados && (
+                <TabsTrigger value="fila" data-testid="aba-transferir-fila">
+                  {t("Fila")}
+                </TabsTrigger>
+              )}
               <TabsTrigger value="atendente">{t("Atendente")}</TabsTrigger>
-              <TabsTrigger value="numero" data-testid="aba-transferir-numero">
-                {t("Número")}
-              </TabsTrigger>
+              {temAbaNumero && (
+                <TabsTrigger value="numero" data-testid="aba-transferir-numero">
+                  {t("Número")}
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
         )}
 
+        {abaAtual === "fila" ? (
+          <TransferirParaFila conversationId={conversationId} onClose={() => close(false)} />
+        ) : (
+        <>
         {abaAtual === "numero" && numero ? (
           <div className="space-y-4">
             <div className="space-y-1.5">
@@ -272,6 +303,8 @@ export function ReassignDialog({
           </Button>
           )}
         </DialogFooter>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   );

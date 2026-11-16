@@ -320,11 +320,21 @@ export function InboxLayout({
    * query repetida aqui não teria como distinguir E de OU no seletor.
    */
   const tagNaUrl = searchParams.get("tag");
+  /**
+   * `?fila=` é o destino do link de cada fila no menu lateral (grupo
+   * Atendimento): a Inbox abre na aba Fila, já recortada pelo setor. Como a aba,
+   * a fila vive na URL — e não em estado local — porque o link do menu navega
+   * com a Inbox JÁ montada: um valor lido só na abertura ignoraria o segundo
+   * clique. O seletor da barra grava aqui também (`setFilterValue`), então menu
+   * e seletor nunca divergem.
+   */
+  const filaNaUrl = searchParams.get("fila");
 
-  // tab vive na URL (?filter=); os demais filtros são estado local de sessão —
-  // exceto a etiqueta, que entra UMA vez, na abertura, pela URL, e o número e o
-  // "Não lidos", lembrados por organização (lib/inbox/filtros-lembrados).
-  const [aux, setAux] = useState<Omit<InboxFiltersValue, "tab">>({
+  // tab e fila vivem na URL (?filter=, ?fila=); os demais filtros são estado
+  // local de sessão — exceto a etiqueta, que entra UMA vez, na abertura, pela
+  // URL, e o número e o "Não lidos", lembrados por organização
+  // (lib/inbox/filtros-lembrados).
+  const [aux, setAux] = useState<Omit<InboxFiltersValue, "tab" | "sector_id">>({
     search: "",
     onlyUnread: false,
     onlyGroups: false,
@@ -354,20 +364,27 @@ export function InboxLayout({
   const filterValue: InboxFiltersValue = {
     tab,
     ...aux,
+    ...(filaNaUrl ? { sector_id: filaNaUrl } : {}),
     // Uma troca de organização não leva o número anterior nem à consulta.
     ...(orgDosFiltros !== orgId ? { channel_session_id: undefined, onlyUnread: false } : {}),
   };
   const setFilterValue = useCallback(
     (next: InboxFiltersValue) => {
-      if (next.tab !== tab) {
+      const mudouAba = next.tab !== tab;
+      const mudouFila = (next.sector_id ?? null) !== filaNaUrl;
+      if (mudouAba || mudouFila) {
         const params = new URLSearchParams(searchParams);
-        params.set("filter", next.tab);
+        if (mudouAba) params.set("filter", next.tab);
+        if (mudouFila) {
+          if (next.sector_id) params.set("fila", next.sector_id);
+          else params.delete("fila");
+        }
         router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       }
-      const { tab: _t, ...rest } = next;
+      const { tab: _t, sector_id: _s, ...rest } = next;
       setAux(rest);
     },
-    [tab, searchParams, router, pathname],
+    [tab, filaNaUrl, searchParams, router, pathname],
   );
 
   // Desliga só os AUXILIARES e mantém a aba: a aba é onde a pessoa está, e

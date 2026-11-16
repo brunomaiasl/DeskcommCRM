@@ -9,6 +9,7 @@ vi.mock("@/hooks/inbox/useMessagesRealtime", () => ({ useMessagesRealtime: () =>
   fetchNextPage: state.fetch, refetch: vi.fn(),
 }) }));
 vi.mock("@/hooks/inbox/useConversationNotes", () => ({ useConversationNotes: () => [] }));
+vi.mock("@/hooks/inbox/useTransferenciasDaConversa", () => ({ useTransferenciasDaConversa: () => [] }));
 vi.mock("@/hooks/inbox/usePassagensDaConversa", () => ({ usePassagensDaConversa: () => [] }));
 vi.mock("@/hooks/inbox/useClaimConversation", () => ({ useClaimConversation: () => ({ mutate: vi.fn() }) }));
 vi.mock("@/hooks/inbox/useDeleteNote", () => ({ useDeleteNote: () => ({ mutate: vi.fn() }) }));
