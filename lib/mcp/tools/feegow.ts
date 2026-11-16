@@ -36,6 +36,7 @@ import {
   unidadesPorLocalOuVazio,
   LIMITE_DE_BUSCA_DIAS,
   listarAgendamentosDoPaciente,
+  listarUnidades,
   listarEspecialidades,
   listarProfissionais,
   motivoPadrao,
@@ -202,13 +203,47 @@ export const crmFeegowListProfessionals: McpToolDefinition<typeof profissionaisS
     }),
 };
 
+// ─── unidades ───────────────────────────────────────────────────────────────
+
+const unidadesShape = {};
+
+export const crmFeegowListUnits: McpToolDefinition<typeof unidadesShape> = {
+  name: "crm_feegow_list_units",
+  description:
+    "Lista as UNIDADES da clínica com nome, endereço e telefone, do cadastro do Feegow. Use para perguntar ao " +
+    "paciente se ele prefere alguma unidade, mostrando o endereço de cada uma, ANTES de buscar horário. Se ele " +
+    "escolher uma, passe o unidade_id dela para crm_feegow_next_available / crm_feegow_available_slots; se " +
+    "disser que tanto faz, busque sem unidade (todas).",
+  inputSchema: unidadesShape,
+  category: "read",
+  requiresRole: "agent",
+  requiresScope: "mcp:read",
+  handler: async (_input, ctx) =>
+    comFeegow("crm_feegow_list_units", ctx, async () => {
+      const unidades = await listarUnidades();
+      return {
+        ok: true,
+        total: unidades.length,
+        unidades,
+        ...(unidades.length === 0 ? { aviso: "o Feegow não devolveu nenhuma unidade" } : {}),
+      };
+    }),
+};
+
 // ─── primeiro horário livre ─────────────────────────────────────────────────
+
+const unidadeDoPaciente = idFeegow
+  .optional()
+  .describe(
+    "Só se o paciente escolheu uma unidade (unidade_id de crm_feegow_list_units). Omitir = todas as unidades.",
+  );
 
 const proximoShape = {
   especialidade_id: idFeegow.describe("Especialidade pedida (de crm_feegow_list_specialties)."),
   profissional_id: idFeegow
     .optional()
     .describe("Só quando o paciente pediu um profissional específico."),
+  unidade_id: unidadeDoPaciente,
   convenio_id: idFeegow.optional().describe("Convênio do paciente, se for atender por convênio."),
   a_partir_de: dataIso.optional().describe("Data inicial (AAAA-MM-DD). Padrão: hoje."),
   quantidade: z.number().int().min(1).max(5).optional().default(3).describe("Quantos horários sugerir."),
@@ -218,7 +253,7 @@ export const crmFeegowNextAvailable: McpToolDefinition<typeof proximoShape> = {
   name: "crm_feegow_next_available",
   description:
     "Busca na agenda do Feegow o PRIMEIRO horário livre mais próximo para uma especialidade (e, se pedido, " +
-    "um profissional), em TODAS as unidades. Devolve os horários mais próximos e o primeiro horário de cada " +
+    "um profissional), em TODAS as unidades ou só na que o paciente escolheu (unidade_id). Devolve os horários mais próximos e o primeiro horário de cada " +
     "profissional — cada um com a UNIDADE onde é o atendimento (diga a unidade ao paciente). Procura até " +
     `${LIMITE_DE_BUSCA_DIAS} dias à frente. Use para responder "qual o horário mais próximo?". ` +
     "Ofereça as opções ao paciente; nunca agende sem ele confirmar.",
@@ -231,6 +266,7 @@ export const crmFeegowNextAvailable: McpToolDefinition<typeof proximoShape> = {
       const { horarios, buscou_ate } = await primeirosHorarios({
         especialidade_id: input.especialidade_id,
         profissional_id: input.profissional_id,
+        unidade_id: input.unidade_id,
         convenio_id: input.convenio_id,
         de: input.a_partir_de,
       });
@@ -264,6 +300,7 @@ const MAX_PERIODO_DIAS = 31;
 const horariosShape = {
   especialidade_id: idFeegow.describe("Especialidade (de crm_feegow_list_specialties)."),
   profissional_id: idFeegow.optional(),
+  unidade_id: unidadeDoPaciente,
   convenio_id: idFeegow.optional(),
   data_inicio: dataIso.describe("Primeiro dia (AAAA-MM-DD)."),
   data_fim: dataIso.optional().describe("Último dia (AAAA-MM-DD). Padrão: o mesmo dia de início."),
@@ -291,6 +328,7 @@ export const crmFeegowAvailableSlots: McpToolDefinition<typeof horariosShape> = 
       const horarios = await buscarHorarios({
         especialidade_id: input.especialidade_id,
         profissional_id: input.profissional_id,
+        unidade_id: input.unidade_id,
         convenio_id: input.convenio_id,
         de: input.data_inicio,
         ate: fim,

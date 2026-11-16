@@ -130,8 +130,9 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_list_sectors": { tokens: 102, motivo: "ferramenta nova: lista os setores para crm_set_conversation_sector, medida na criação (2026-11-12)" },
   "crm_feegow_list_specialties": { tokens: 121, motivo: FEEGOW },
   "crm_feegow_list_professionals": { tokens: 120, motivo: FEEGOW },
-  "crm_feegow_next_available": { tokens: 288, motivo: FEEGOW },
-  "crm_feegow_available_slots": { tokens: 270, motivo: FEEGOW },
+  "crm_feegow_list_units": { tokens: 116, motivo: "ferramenta nova: as unidades com endereço, para perguntar a preferência do paciente antes de buscar horário (2026-11-16)" },
+  "crm_feegow_next_available": { tokens: 375, motivo: "+87: filtro `unidade_id` (a unidade que o paciente escolheu) e a descrição dizendo que busca em todas as unidades e devolve a unidade de cada horário (2026-11-16)" },
+  "crm_feegow_available_slots": { tokens: 321, motivo: "+51: filtro `unidade_id` (a unidade que o paciente escolheu) (2026-11-16)" },
   "crm_feegow_find_patient": { tokens: 102, motivo: FEEGOW },
   "crm_feegow_list_patient_appointments": { tokens: 99, motivo: FEEGOW },
   "crm_feegow_create_patient": { tokens: 258, motivo: FEEGOW },
@@ -163,8 +164,10 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
 // (#3463), que só entra no catálogo com o módulo `status_whatsapp` ligado; +37 na
 // descrição de `crm_get_conversation_history`, que passou a dizer o AUTOR da
 // mensagem (#4077); +2143 com as dez ferramentas da agenda do Feegow e
-// `crm_list_sectors` — as do Feegow só entram no turno com o pacote `agendar`.
-const TETO_TOTAL = 32810;
+// `crm_list_sectors` — as do Feegow só entram no turno com o pacote `agendar`;
+// +254 com `crm_feegow_list_units` e o filtro de unidade nas duas buscas
+// (2026-11-16), também só com o pacote `agendar`.
+const TETO_TOTAL = 33064;
 
 const VARIANTE = "schedule_followup (com negócio)";
 

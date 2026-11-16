@@ -37,6 +37,7 @@ import { agoraEmSaoPaulo, isoParaBR, paraIso, somarDias } from "@/lib/feegow/dat
 import {
   crmFeegowBookAppointment,
   crmFeegowCancelAppointment,
+  crmFeegowListUnits,
   crmFeegowNextAvailable,
 } from "@/lib/mcp/tools/feegow";
 import type { McpContext } from "@/lib/mcp/types";
@@ -208,6 +209,50 @@ describe("cliente HTTP", () => {
 
 // ─── tools ──────────────────────────────────────────────────────────────────
 
+describe("crm_feegow_list_units", () => {
+  it("lista matriz e filiais com endereço montado, sem repetir", async () => {
+    simularFeegow((c) => {
+      if (c.path === "company/list-unity") {
+        return ok({
+          matriz: [
+            {
+              unidade_id: 0,
+              nome_fantasia: "Padre Anchieta - Campinas",
+              endereco: "Rua Padre Anchieta",
+              numero: "100",
+              bairro: "Centro",
+              cidade: "Campinas",
+              estado: "SP",
+              cep: "13000-000",
+              complemento: "",
+              telefone_1: "(19) 3333-0000",
+            },
+          ],
+          unidades: [
+            { unidade_id: 2, nome_fantasia: "Matão - Sumaré", endereco: "", numero: "", bairro: "", cidade: "", estado: "" },
+          ],
+        });
+      }
+      return undefined;
+    });
+    const r = (await executar(crmFeegowListUnits, {})) as {
+      ok: boolean;
+      unidades: Array<{ unidade_id: number; nome: string; endereco: string | null; telefone: string | null }>;
+    };
+    expect(r.ok).toBe(true);
+    expect(r.unidades).toEqual([
+      {
+        unidade_id: 0,
+        nome: "Padre Anchieta - Campinas",
+        endereco: "Rua Padre Anchieta, 100 - Centro, Campinas/SP - CEP 13000-000",
+        telefone: "(19) 3333-0000",
+      },
+      // Sem endereço no cadastro: endereço nulo, e o agente não inventa.
+      { unidade_id: 2, nome: "Matão - Sumaré", endereco: null, telefone: null },
+    ]);
+  });
+});
+
 describe("crm_feegow_next_available", () => {
   it("devolve o mais próximo e o primeiro de cada profissional, com nome", async () => {
     simularFeegow((c) => {
@@ -272,6 +317,24 @@ describe("crm_feegow_next_available", () => {
       ["Dr. Beto", "08:00", "Matão - Sumaré"],
       ["Dra. Ana", "10:00", "Padre Anchieta - Campinas"],
     ]);
+  });
+
+  it("com a unidade escolhida pelo paciente, a busca filtra só ela", async () => {
+    simularFeegow((c) => {
+      if (c.path === "appoints/available-schedule") {
+        expect(c.query.get("unidade_id")).toBe("2");
+        return ok({ profissional_id: { "9": { local_id: { "12": { "2099-01-02": ["08:00:00"] } } } } });
+      }
+      if (c.path === "professional/list") return PROFISSIONAIS;
+      return undefined;
+    });
+    const r = (await executar(crmFeegowNextAvailable, {
+      especialidade_id: 95,
+      unidade_id: 2,
+      quantidade: 1,
+      a_partir_de: "2099-01-01",
+    })) as { encontrou: boolean };
+    expect(r.encontrou).toBe(true);
   });
 
   it("sem a lista de locais, o horário sai do mesmo jeito (unidade nula)", async () => {

@@ -41,6 +41,7 @@ import {
 import {
   crmFeegowListSpecialties,
   crmFeegowListProfessionals,
+  crmFeegowListUnits,
   crmFeegowNextAvailable,
   crmFeegowAvailableSlots,
   crmFeegowFindPatient,
@@ -167,6 +168,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   // read — agenda da clínica no Feegow (sistema externo)
   crmFeegowListSpecialties,
   crmFeegowListProfessionals,
+  crmFeegowListUnits,
   crmFeegowNextAvailable,
   crmFeegowAvailableSlots,
   crmFeegowFindPatient,

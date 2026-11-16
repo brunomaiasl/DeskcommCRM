@@ -37,6 +37,16 @@ export const TOOLS_FEEGOW = declararTools([
     pacotes: ["agendar"],
   },
   {
+    name: "crm_feegow_list_units",
+    category: "read",
+    rotulo: "Ver as unidades da clínica e seus endereços",
+    explicacao:
+      "Mostra as unidades da clínica com endereço e telefone, para o assistente perguntar ao paciente se ele prefere alguma antes de procurar horário.",
+    oQueToca: "Agenda da clínica",
+    risco: "seguro",
+    pacotes: ["agendar"],
+  },
+  {
     name: "crm_feegow_next_available",
     category: "read",
     rotulo: "Achar o horário livre mais próximo",

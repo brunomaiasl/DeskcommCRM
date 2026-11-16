@@ -85,36 +85,79 @@ export interface UnidadeDoLocal {
   nome: string;
 }
 
+export interface Unidade {
+  unidade_id: number;
+  nome: string;
+  /** Endereço montado do cadastro do Feegow; `null` quando a unidade não tem. */
+  endereco: string | null;
+  telefone: string | null;
+}
+
+function texto(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** "Rua X, 123 - Bairro, Cidade/UF - CEP 00000-000 (complemento)". */
+function montarEndereco(u: Record<string, unknown>): string | null {
+  const rua = [texto(u.endereco), texto(u.numero)].filter(Boolean).join(", ");
+  const local = [texto(u.bairro), [texto(u.cidade), texto(u.estado)].filter(Boolean).join("/")]
+    .filter(Boolean)
+    .join(", ");
+  const partes = [rua, local].filter(Boolean);
+  if (partes.length === 0) return null;
+  const cep = texto(u.cep);
+  const complemento = texto(u.complemento);
+  return (
+    partes.join(" - ") + (cep ? ` - CEP ${cep}` : "") + (complemento ? ` (${complemento})` : "")
+  );
+}
+
+/**
+ * As UNIDADES da clínica (matriz + filiais), com endereço — para o agente
+ * perguntar a preferência do paciente mostrando onde fica cada uma. Vem de
+ * `company/list-unity`; muda pouco: cache de 10 minutos.
+ */
+export async function listarUnidades(): Promise<Unidade[]> {
+  return comCache("unidades", async () => {
+    const bruto = await feegowGet<unknown>("company/list-unity");
+    const blocos =
+      bruto && typeof bruto === "object" && !Array.isArray(bruto)
+        ? [(bruto as { matriz?: unknown }).matriz, (bruto as { unidades?: unknown }).unidades]
+        : [bruto];
+    const lista: Unidade[] = [];
+    for (const bloco of blocos) {
+      if (!Array.isArray(bloco)) continue;
+      for (const u of bloco as Array<Record<string, unknown>>) {
+        const id = num(u.unidade_id);
+        const nome = texto(u.nome_fantasia);
+        if (id === null || !nome || lista.some((x) => x.unidade_id === id)) continue;
+        lista.push({
+          unidade_id: id,
+          nome,
+          endereco: montarEndereco(u),
+          telefone: texto(u.telefone_1) || texto(u.telefone_2) || null,
+        });
+      }
+    }
+    return lista;
+  });
+}
+
 /**
  * De qual UNIDADE é cada local — para o agente dizer "às 9h, na unidade X".
  *
  * O horário da agenda vem com `local_id` (a sala), e a sala pertence a uma
- * unidade (`company/list-local`); o nome da unidade vem de `company/list-unity`
- * (matriz + filiais). As duas listas mudam pouco: cache de 10 minutos.
+ * unidade (`company/list-local`); o nome da unidade vem de `listarUnidades`.
+ * As duas listas mudam pouco: cache de 10 minutos.
  */
 export async function unidadesPorLocal(): Promise<Map<number, UnidadeDoLocal>> {
   return comCache("unidades-por-local", async () => {
-    const [locaisBrutos, unidadesBrutas] = await Promise.all([
+    const [locaisBrutos, unidades] = await Promise.all([
       feegowGet<unknown>("company/list-local"),
-      feegowGet<unknown>("company/list-unity"),
+      listarUnidades(),
     ]);
 
-    const nomeDaUnidade = new Map<number, string>();
-    const blocos =
-      unidadesBrutas && typeof unidadesBrutas === "object" && !Array.isArray(unidadesBrutas)
-        ? [
-            (unidadesBrutas as { matriz?: unknown }).matriz,
-            (unidadesBrutas as { unidades?: unknown }).unidades,
-          ]
-        : [unidadesBrutas];
-    for (const bloco of blocos) {
-      if (!Array.isArray(bloco)) continue;
-      for (const u of bloco) {
-        const id = num((u as { unidade_id?: unknown }).unidade_id);
-        const nome = (u as { nome_fantasia?: unknown }).nome_fantasia;
-        if (id !== null && typeof nome === "string" && nome.trim()) nomeDaUnidade.set(id, nome.trim());
-      }
-    }
+    const nomeDaUnidade = new Map<number, string>(unidades.map((u) => [u.unidade_id, u.nome]));
 
     const porLocal = new Map<number, UnidadeDoLocal>();
     if (Array.isArray(locaisBrutos)) {
@@ -273,6 +316,11 @@ export interface FiltroDeHorarios {
   procedimento_id?: number;
   profissional_id?: number;
   convenio_id?: number;
+  /**
+   * Só a unidade que o PACIENTE preferiu. Ausente = a da configuração (vazia =
+   * todas as unidades).
+   */
+  unidade_id?: number;
   /** ISO. */
   de: string;
   /** ISO. */
@@ -292,7 +340,8 @@ export async function buscarHorarios(f: FiltroDeHorarios): Promise<Horario[]> {
     procedimento_id: porProcedimento ? f.procedimento_id : undefined,
     profissional_id: f.profissional_id,
     convenio_id: f.convenio_id,
-    unidade_id: cfg?.unidadeId ?? undefined,
+    // A preferência do paciente vence a configuração da instalação.
+    unidade_id: f.unidade_id ?? cfg?.unidadeId ?? undefined,
     data_start: isoParaBR(f.de),
     data_end: isoParaBR(f.ate),
   });
