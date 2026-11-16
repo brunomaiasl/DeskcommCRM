@@ -27,7 +27,48 @@ vi.mock("@/hooks/inbox/useConversationCounts", () => ({
   useConversationCounts: () => ({ data: counts.data }),
 }));
 
-import { FilasNoMenu } from "@/components/shell/FilasNoMenu";
+import { fireEvent } from "@testing-library/react";
+import { FilasNoMenu, ordenarFilas } from "@/components/shell/FilasNoMenu";
+
+describe("ordem das filas no menu", () => {
+  it("Lead Campanhas vai sempre para o topo, sem depender de acento ou caixa", () => {
+    const filas = [{ name: "Agendamentos" }, { name: "Ouvidoria" }, { name: "  LEAD   campanhas " }];
+    expect(ordenarFilas(filas).map((f) => f.name.trim())).toEqual([
+      "LEAD   campanhas",
+      "Agendamentos",
+      "Ouvidoria",
+    ]);
+  });
+
+  it("sem a fila fixa, a ordem da rota fica como está", () => {
+    const filas = [{ name: "B" }, { name: "A" }];
+    expect(ordenarFilas(filas)).toEqual(filas);
+  });
+});
+
+describe("FilasNoMenu — recolher", () => {
+  it("o cabeçalho recolhe e expande a lista, e recolhida mostra o total esperando", () => {
+    window.localStorage.clear();
+    sectors.data = {
+      data: [
+        { id: "a", name: "Agendamentos", color: null },
+        { id: "b", name: "Ouvidoria", color: null },
+      ],
+    };
+    counts.data = { por_fila: { a: 2, b: 1 } };
+    nav.fila = null;
+    render(<FilasNoMenu />);
+    const cabecalho = screen.getByTestId("filas-no-menu-cabecalho");
+    expect(cabecalho).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByTestId("filas-no-menu-total")).toBeNull();
+
+    fireEvent.click(cabecalho);
+    expect(cabecalho).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("filas-no-menu-lista")).not.toBeVisible();
+    expect(screen.getByTestId("filas-no-menu-total")).toHaveTextContent("3");
+    expect(window.localStorage.getItem("sidebar-filas-recolhidas")).toBe("1");
+  });
+});
 
 describe("FilasNoMenu", () => {
   it("não desenha nada sem fila criada", () => {
