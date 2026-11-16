@@ -52,12 +52,12 @@ export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "archived" | "
  * array, então as setas continuam vizinha a vizinha.
  */
 const INBOX_TABS: { value: InboxTab; label: string }[] = [
-  // "Automático", não "IA": a palavra deste ator já é contrato em quatro arquivos
-  // e no dicionário, e `handoff-por-orcamento.test.ts` usa literalmente "Voltar
-  // para a IA" como a sabotagem que deve reprovar. O rótulo não mudou quando o
-  // significado mudou (deixou de filtrar `ai_handling` e passou a perguntar a
-  // régua do motor) — e a posição sim: ela era a última fora do padrão.
-  { value: "ai", label: "Automático" },
+  // "Agente": as conversas que o AGENTE DE IA está conduzindo agora (a régua do
+  // motor, `comando_da_conversa = automatico`) — a aba para acompanhar o
+  // atendimento dele. Antes dizia "Automático", palavra que a equipe não
+  // entendia (pedido da clínica, 16/11/2026). Só o RÓTULO mudou: o `value` ("ai",
+  // `?filter=ai`) e a chave da contagem (`automatico`) são os mesmos.
+  { value: "ai", label: "Agente" },
   { value: "unassigned", label: "Fila" },
   { value: "mine", label: "Minhas" },
   { value: "all", label: "Todas" },
@@ -552,7 +552,7 @@ export function InboxFilters({ value, onChange, filas: filasDaOrganizacao, acaoE
 
   return (
     <div className="border-b border-border bg-background">
-      <div className="space-y-2 px-3 pt-3 pb-2">
+      <div className="space-y-1.5 px-3 pt-1.5 pb-1">
         <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
             <MagnifyingGlass

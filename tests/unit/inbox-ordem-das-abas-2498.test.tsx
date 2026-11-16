@@ -68,10 +68,10 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("as seis abas, na ordem pedida pela #2498", () => {
-  it("Automático, Fila, Minhas, Todas, Fechadas, Arquivadas — nessa ordem", () => {
+  it("Agente, Fila, Minhas, Todas, Fechadas, Arquivadas — nessa ordem", () => {
     render(<InboxFilters value={VALUE} onChange={() => {}} />);
     expect(abasRenderizadas()).toEqual([
-      "Automático",
+      "Agente",
       "Fila",
       "Minhas",
       "Todas",
@@ -91,7 +91,7 @@ describe("as seis abas, na ordem pedida pela #2498", () => {
       ([, value, label]) => `${value}=${label}`,
     );
     expect(pares).toEqual([
-      "ai=Automático",
+      "ai=Agente",
       "unassigned=Fila",
       "mine=Minhas",
       "all=Todas",
@@ -102,7 +102,7 @@ describe("as seis abas, na ordem pedida pela #2498", () => {
 
   it("cada aba continua com o SEU contador (nada trocou de chave)", () => {
     render(<InboxFilters value={VALUE} onChange={() => {}} />);
-    expect(screen.getByRole("tab", { name: /^Automático/ })).toHaveTextContent("7");
+    expect(screen.getByRole("tab", { name: /^Agente/ })).toHaveTextContent("7");
     expect(screen.getByRole("tab", { name: /^Fila/ })).toHaveTextContent("3");
     expect(screen.getByRole("tab", { name: /^Minhas/ })).toHaveTextContent("2");
     expect(screen.getByRole("tab", { name: /^Todas/ })).toHaveTextContent("5");

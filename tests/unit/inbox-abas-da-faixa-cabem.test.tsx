@@ -106,7 +106,7 @@ describe("faixa da Inbox — quebra em vez de esconder aba (#2745)", () => {
     // catraca de classe continua verde com a tela errada.
     const abas = screen.getAllByRole("tab");
     expect(abas).toHaveLength(6);
-    for (const rotulo of ["Automático", "Fila", "Minhas", "Todas", "Fechadas", "Arquivadas"]) {
+    for (const rotulo of ["Agente", "Fila", "Minhas", "Todas", "Fechadas", "Arquivadas"]) {
       expect(
         screen.getByRole("tab", { name: new RegExp(rotulo) }),
         `a aba "${rotulo}" não está na faixa`,
@@ -136,7 +136,7 @@ describe("faixa da Inbox — quebra em vez de esconder aba (#2745)", () => {
       "archived",
     ]);
     expect(screen.getAllByRole("tab").map((a) => a.textContent?.replace(/\s+/g, ""))).toEqual([
-      "Automático12",
+      "Agente12",
       "Fila47",
       "Minhas8",
       "Todas130",
