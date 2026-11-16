@@ -118,6 +118,14 @@ function montarEndereco(u: Record<string, unknown>): string | null {
  * `company/list-unity`; muda pouco: cache de 10 minutos.
  */
 export async function listarUnidades(): Promise<Unidade[]> {
+  const cfg = await carregarFeegowConfig();
+  const permitidas = cfg?.unidades ?? [];
+  const todas = await todasAsUnidades();
+  // Só as unidades em que a clínica atende (configuração); vazia = todas.
+  return permitidas.length === 0 ? todas : todas.filter((u) => permitidas.includes(u.unidade_id));
+}
+
+async function todasAsUnidades(): Promise<Unidade[]> {
   return comCache("unidades", async () => {
     const bruto = await feegowGet<unknown>("company/list-unity");
     const blocos =
@@ -154,7 +162,8 @@ export async function unidadesPorLocal(): Promise<Map<number, UnidadeDoLocal>> {
   return comCache("unidades-por-local", async () => {
     const [locaisBrutos, unidades] = await Promise.all([
       feegowGet<unknown>("company/list-local"),
-      listarUnidades(),
+      // TODAS, não só as permitidas: o nome é só rótulo, e a busca já limita.
+      todasAsUnidades(),
     ]);
 
     const nomeDaUnidade = new Map<number, string>(unidades.map((u) => [u.unidade_id, u.nome]));
@@ -334,22 +343,35 @@ export async function buscarHorarios(f: FiltroDeHorarios): Promise<Horario[]> {
   if (!porProcedimento && f.especialidade_id === undefined) {
     throw new FeegowError("validacao", "informe a especialidade ou o procedimento");
   }
-  const conteudo = await feegowGet<unknown>("appoints/available-schedule", {
-    tipo: porProcedimento ? "P" : "E",
-    especialidade_id: porProcedimento ? undefined : f.especialidade_id,
-    procedimento_id: porProcedimento ? f.procedimento_id : undefined,
-    profissional_id: f.profissional_id,
-    convenio_id: f.convenio_id,
-    // A preferência do paciente vence a configuração da instalação.
-    unidade_id: f.unidade_id ?? cfg?.unidadeId ?? undefined,
-    data_start: isoParaBR(f.de),
-    data_end: isoParaBR(f.ate),
-  });
+  // QUAIS unidades consultar. As da configuração são o limite: o Feegow da
+  // clínica tem unidades de outras empresas, e o agente nunca oferece horário
+  // fora das que ela atende. A preferência do paciente estreita dentro disso;
+  // uma unidade fora da lista não devolve nada (não abre exceção).
+  const permitidas = cfg?.unidades ?? [];
+  let alvo: Array<number | undefined>;
+  if (f.unidade_id !== undefined) {
+    alvo = permitidas.length === 0 || permitidas.includes(f.unidade_id) ? [f.unidade_id] : [];
+  } else {
+    alvo = permitidas.length > 0 ? permitidas : [undefined];
+  }
+
+  const consultar = (unidade_id: number | undefined) =>
+    feegowGet<unknown>("appoints/available-schedule", {
+      tipo: porProcedimento ? "P" : "E",
+      especialidade_id: porProcedimento ? undefined : f.especialidade_id,
+      procedimento_id: porProcedimento ? f.procedimento_id : undefined,
+      profissional_id: f.profissional_id,
+      convenio_id: f.convenio_id,
+      unidade_id,
+      data_start: isoParaBR(f.de),
+      data_end: isoParaBR(f.ate),
+    });
+  const respostas = await Promise.all(alvo.map(consultar));
   const agora = agoraEmSaoPaulo();
   return ordenarHorarios(
-    normalizarDisponibilidade(conteudo).filter(
-      (h) => h.data > agora.data || (h.data === agora.data && h.hora > agora.hora),
-    ),
+    respostas
+      .flatMap((conteudo) => normalizarDisponibilidade(conteudo))
+      .filter((h) => h.data > agora.data || (h.data === agora.data && h.hora > agora.hora)),
   );
 }
 
@@ -433,6 +455,31 @@ export async function valorDoProcedimento(opcoes: {
   const lista = Array.isArray(bruto) ? bruto : [];
   const achado = lista.find((p) => num((p as Record<string, unknown>).procedimento_id) === opcoes.procedimento_id);
   return achado ? num((achado as Record<string, unknown>).valor) : null;
+}
+
+/**
+ * O nome de um procedimento no Feegow (`null` se não achar). Serve à trava de
+ * `procedimentoSuspeito` — a marcação confere O QUE vai marcar antes de marcar.
+ */
+export async function nomeDoProcedimento(procedimento_id: number): Promise<string | null> {
+  const bruto = await feegowGet<unknown>("procedures/list", { procedimento_id });
+  const lista = Array.isArray(bruto) ? bruto : [];
+  const achado = lista.find((p) => num((p as Record<string, unknown>).procedimento_id) === procedimento_id);
+  const nome = achado ? (achado as Record<string, unknown>).nome : null;
+  return typeof nome === "string" ? nome : null;
+}
+
+/**
+ * Procedimento que NÃO é consulta de verdade e não pode ir para a agenda do
+ * paciente. Medido no Feegow da clínica (16/11/2026): a "consulta padrão" de
+ * várias especialidades apontava para "TESTE IMPLANTAÇÃO" — marcar assim põe um
+ * teste na agenda do médico, com o preço errado. Recusar e passar para uma
+ * pessoa é o caminho certo até o cadastro ser corrigido.
+ */
+export function procedimentoSuspeito(nome: string | null): boolean {
+  if (!nome) return false;
+  const n = normalizar(nome);
+  return /\bteste\b/.test(n) || n.includes("implantacao");
 }
 
 // ─── motivos (cancelar / remarcar) ──────────────────────────────────────────

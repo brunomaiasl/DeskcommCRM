@@ -22,7 +22,13 @@ export interface FeegowConfig {
   baseUrl: string;
   /** Canal de agendamento a gravar (ver `/appoints/list-channel`). */
   canalId: number | null;
-  /** Unidade padrão para buscar horários (0 = unidade principal). `null` = todas. */
+  /**
+   * As unidades em que o agente atende (ex.: [1, 2]). Vazia = todas as do
+   * Feegow. O Feegow de uma clínica pode ter unidades de OUTRAS empresas — esta
+   * lista é o que impede o agente de oferecer horário de quem não é da clínica.
+   */
+  unidades: number[];
+  /** Com UMA unidade só, ela; com várias ou nenhuma, `null` (filtros que só aceitam uma). */
   unidadeId: number | null;
   tokenExpiresAt: Date | null;
   timeoutMs: number;
@@ -32,6 +38,17 @@ function inteiroOuNull(valor: string | undefined): number | null {
   if (valor === undefined || valor.trim() === "") return null;
   const n = Number(valor);
   return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/** "1, 2" → [1, 2]; vazio ou lixo → []. Sem repetidos, na ordem escrita. */
+export function listaDeUnidades(valor: string | undefined): number[] {
+  if (!valor) return [];
+  const ids: number[] = [];
+  for (const parte of valor.split(/[,;\s]+/)) {
+    const n = inteiroOuNull(parte);
+    if (n !== null && !ids.includes(n)) ids.push(n);
+  }
+  return ids;
 }
 
 function dataOuNull(valor: string | undefined): Date | null {
@@ -55,11 +72,13 @@ export function getFeegowConfig(
   if (!token) return null;
 
   const base = (fonte["FEEGOW_API_BASE_URL"] ?? "").trim() || FEEGOW_DEFAULT_BASE_URL;
+  const unidades = listaDeUnidades(fonte["FEEGOW_UNIDADE_ID"]);
   return {
     token,
     baseUrl: base.replace(/\/+$/, ""),
     canalId: inteiroOuNull(fonte["FEEGOW_CANAL_ID"]),
-    unidadeId: inteiroOuNull(fonte["FEEGOW_UNIDADE_ID"]),
+    unidades,
+    unidadeId: unidades.length === 1 ? unidades[0]! : null,
     tokenExpiresAt: dataOuNull(fonte["FEEGOW_TOKEN_EXPIRES_AT"]),
     timeoutMs: inteiroOuNull(fonte["FEEGOW_TIMEOUT_MS"]) ?? FEEGOW_DEFAULT_TIMEOUT_MS,
   };

@@ -37,6 +37,8 @@ import {
   LIMITE_DE_BUSCA_DIAS,
   listarAgendamentosDoPaciente,
   listarUnidades,
+  nomeDoProcedimento,
+  procedimentoSuspeito,
   listarEspecialidades,
   listarProfissionais,
   motivoPadrao,
@@ -503,6 +505,17 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
           );
         }
         procedimento_id = esp.consulta_id;
+      }
+
+      // 2b. O procedimento é consulta de verdade? A "consulta padrão" de uma
+      // especialidade pode estar mal cadastrada no Feegow (ex.: "TESTE
+      // IMPLANTAÇÃO"); marcar assim põe um teste na agenda do médico.
+      if (procedimentoSuspeito(await nomeDoProcedimento(procedimento_id))) {
+        return recusa(
+          "procedimento_invalido",
+          "O procedimento desta consulta está cadastrado de forma errada no Feegow, então a consulta não foi " +
+            `marcada. Diga ao paciente que a equipe vai concluir o agendamento.${COMO_PASSAR_PARA_PESSOA}`,
+        );
       }
 
       // 3. valor: com convênio é 0 (regra da API); particular, o da tabela.

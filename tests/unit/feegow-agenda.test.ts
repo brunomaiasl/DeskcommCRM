@@ -209,6 +209,28 @@ describe("cliente HTTP", () => {
 
 // ─── tools ──────────────────────────────────────────────────────────────────
 
+describe("crm_feegow_list_units — só as unidades configuradas", () => {
+  it("com FEEGOW_UNIDADE_ID=1,2, as de outras empresas não aparecem", async () => {
+    process.env.FEEGOW_UNIDADE_ID = "1,2";
+    simularFeegow((c) => {
+      if (c.path === "company/list-unity") {
+        return ok({
+          matriz: [{ unidade_id: 0, nome_fantasia: "CARTÃO SAÚDE ANCHIETA" }],
+          unidades: [
+            { unidade_id: 1, nome_fantasia: "MED ANCHIETA - PD ANCHIETA" },
+            { unidade_id: 2, nome_fantasia: "MED ANCHIETA - MATÃO" },
+            { unidade_id: 3, nome_fantasia: "PICELLO" },
+          ],
+        });
+      }
+      return undefined;
+    });
+    const r = (await executar(crmFeegowListUnits, {})) as { unidades: Array<{ nome: string }> };
+    expect(r.unidades.map((u) => u.nome)).toEqual(["MED ANCHIETA - PD ANCHIETA", "MED ANCHIETA - MATÃO"]);
+    delete process.env.FEEGOW_UNIDADE_ID;
+  });
+});
+
 describe("crm_feegow_list_units", () => {
   it("lista matriz e filiais com endereço montado, sem repetir", async () => {
     simularFeegow((c) => {
@@ -319,6 +341,52 @@ describe("crm_feegow_next_available", () => {
     ]);
   });
 
+  it("com unidades configuradas (1,2), consulta cada uma, junta, e nunca olha as outras", async () => {
+    process.env.FEEGOW_UNIDADE_ID = "1, 2";
+    const pedidas: Array<string | null> = [];
+    simularFeegow((c) => {
+      if (c.path === "appoints/available-schedule") {
+        const u = c.query.get("unidade_id");
+        pedidas.push(u);
+        const porUnidade: Record<string, unknown> = {
+          "1": { profissional_id: { "7": { local_id: { "3": { "2099-01-02": ["10:00:00"] } } } } },
+          "2": { profissional_id: { "9": { local_id: { "12": { "2099-01-02": ["08:00:00"] } } } } },
+        };
+        return ok(porUnidade[u ?? ""] ?? { profissional_id: {} });
+      }
+      if (c.path === "professional/list") return PROFISSIONAIS;
+      return undefined;
+    });
+    const r = (await executar(crmFeegowNextAvailable, {
+      especialidade_id: 95,
+      quantidade: 2,
+      a_partir_de: "2099-01-01",
+    })) as { mais_proximos: Array<{ profissional: string; hora: string }> };
+    expect([...new Set(pedidas)].sort()).toEqual(["1", "2"]);
+    expect(r.mais_proximos.map((h) => [h.profissional, h.hora])).toEqual([
+      ["Dr. Beto", "08:00"],
+      ["Dra. Ana", "10:00"],
+    ]);
+    delete process.env.FEEGOW_UNIDADE_ID;
+  });
+
+  it("unidade escolhida FORA das configuradas não devolve horário (não abre exceção)", async () => {
+    process.env.FEEGOW_UNIDADE_ID = "1,2";
+    simularFeegow((c) => {
+      if (c.path === "appoints/available-schedule") throw new Error("não devia consultar a agenda");
+      if (c.path === "professional/list") return PROFISSIONAIS;
+      return undefined;
+    });
+    const r = (await executar(crmFeegowNextAvailable, {
+      especialidade_id: 95,
+      unidade_id: 3,
+      quantidade: 1,
+      a_partir_de: "2099-01-01",
+    })) as { encontrou: boolean };
+    expect(r.encontrou).toBe(false);
+    delete process.env.FEEGOW_UNIDADE_ID;
+  });
+
   it("com a unidade escolhida pelo paciente, a busca filtra só ela", async () => {
     simularFeegow((c) => {
       if (c.path === "appoints/available-schedule") {
@@ -424,7 +492,24 @@ describe("crm_feegow_book_appointment", () => {
     await executar(crmFeegowBookAppointment, { ...pedido, convenio_id: 13, convenio_plano_id: 3 });
     const post = chamadas.find((c) => c.path === "appoints/new-appoint");
     expect(post?.body).toMatchObject({ valor: 0, plano: 1, convenio_id: 13, convenio_plano_id: 3 });
-    expect(chamadas.some((c) => c.path === "procedures/list")).toBe(false);
+    // A tabela de VALOR não é consultada com convênio (a busca de valor manda o
+    // paciente_id). A única ida a procedures/list é a conferência do NOME do
+    // procedimento, que vale para todo agendamento.
+    expect(
+      chamadas.some((c) => c.path === "procedures/list" && c.query.get("paciente_id") !== null),
+    ).toBe(false);
+  });
+
+  it("consulta padrão mal cadastrada ('TESTE IMPLANTAÇÃO'): recusa e NÃO marca", async () => {
+    simularFeegow((c) => {
+      if (c.path === "procedures/list") {
+        return ok([{ procedimento_id: 740, nome: "TESTE IMPLANTAÇÃO", valor: 5000 }]);
+      }
+      return agendaCom(["09:00:00"])(c);
+    });
+    const r = (await executar(crmFeegowBookAppointment, pedido)) as { ok: boolean; motivo: string };
+    expect(r).toMatchObject({ ok: false, motivo: "procedimento_invalido" });
+    expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
   });
 
   it("horário que deixou de estar livre: recusa com alternativas e NÃO marca", async () => {

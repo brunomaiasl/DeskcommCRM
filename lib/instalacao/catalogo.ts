@@ -196,11 +196,11 @@ export const CATALOGO_DA_INSTALACAO: readonly ChaveDaInstalacao[] = [
   },
   {
     chave: "FEEGOW_UNIDADE_ID",
-    rotulo: "Unidade do Feegow",
+    rotulo: "Unidades do Feegow em que o agente atende",
     explicacao:
-      "O número da unidade em que o agente busca horários (0 = unidade principal). Vazio = todas as unidades.",
+      "Os números das unidades, separados por vírgula (ex.: 1,2). O agente só busca horário e só mostra endereço dessas unidades — o Feegow pode ter unidades de outras empresas. Vazio = todas.",
     grupo: "integracao",
-    natureza: "numero",
+    natureza: "texto",
     controle: "edita",
   },
   {
