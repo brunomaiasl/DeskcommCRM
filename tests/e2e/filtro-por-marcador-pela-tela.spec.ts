@@ -38,6 +38,16 @@ import {
   type Creds,
 } from "./qa-l12-comum";
 
+/**
+ * A barra de filtros da Inbox é COMPACTA: os controles moram num painel que abre
+ * pelo ícone de filtro. Abre só se estiver fechado — o estado fica lembrado no
+ * navegador, e clicar de novo o fecharia.
+ */
+async function abrirFiltros(page: Page) {
+  const botao = page.getByTestId("botao-filtros-da-inbox");
+  if ((await botao.getAttribute("aria-expanded")) !== "true") await botao.click();
+}
+
 const SUFIXO = `${Date.now()}`.slice(-7);
 
 let c: Creds;
@@ -217,6 +227,7 @@ test.describe("filtro por marcador, pela tela", () => {
     await marcar(page, "Adicionar tag ao contato", "/contacts/", tagDoContato);
 
     // 3. O seletor oferece a UNIÃO dos dois vocabulários.
+    await abrirFiltros(page);
     const seletor = page.getByRole("button", { name: "Filtrar por tag" });
     await seletor.click();
     await expect(page.getByRole("menuitemcheckbox", { name: tagDaConversa, exact: true })).toBeVisible({
@@ -388,6 +399,7 @@ test.describe("filtro por marcador, pela tela", () => {
     await marcar(page, "Adicionar tag ao contato", "/contacts/", tagDoContato);
 
     // 3. O seletor oferece a UNIÃO dos dois vocabulários.
+    await abrirFiltros(page);
     const seletor = page.getByRole("button", { name: "Filtrar por tag" });
     await seletor.click();
     await expect(page.getByRole("menuitemcheckbox", { name: tagDaConversa, exact: true })).toBeVisible({

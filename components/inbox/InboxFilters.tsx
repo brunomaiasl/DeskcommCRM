@@ -1,7 +1,7 @@
 "use client";
 import { useT } from "@/hooks/i18n/useT";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CaretLeft, CaretRight, MagnifyingGlass } from "@/lib/ui/icons";
+import { CaretLeft, CaretRight, Funnel, MagnifyingGlass } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -158,6 +158,9 @@ export function OpcaoDaFila({
 export function comAba(value: InboxFiltersValue, tab: InboxTab): InboxFiltersValue {
   return { ...value, tab, ...(tab === "mine" ? { assigned_to: undefined } : {}) };
 }
+
+/** Painel de filtros aberto ou fechado — preferência por navegador. */
+const CHAVE_DO_PAINEL_DE_FILTROS = "inbox-painel-de-filtros-aberto";
 
 /** Os três estados do vocabulário de etiqueta (#1336) — ver `estadoDoVocabulario`. */
 type EstadoDoVocabularioDeTag = "carregando" | "vazio" | "com-itens";
@@ -501,6 +504,46 @@ export function InboxFilters({ value, onChange, filas: filasDaOrganizacao }: Pro
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  /**
+   * A BARRA COMPACTA (estilo Clinia): só a busca e UM ícone de filtro à vista. O
+   * painel com os filtros (Não lidos, Grupos, número, etiquetas, atendente e
+   * fila) abre por baixo ao clicar — a coluna de 280 px devolve as três linhas de
+   * controles para a lista de conversas.
+   *
+   * O número no ícone diz QUANTOS filtros estão ligados: com o painel fechado, um
+   * filtro ativo sem sinal nenhum faria a lista parecer vazia sem explicação.
+   *
+   * Aberto/fechado é preferência do navegador (localStorage), começa fechado. O
+   * painel é escondido por CSS, não desmontado: os seletores de dentro guardam
+   * estado próprio (o menu de etiquetas, a busca nele) que não pode morrer a cada
+   * vez que a pessoa recolhe o painel.
+   */
+  const filtrosAtivos =
+    (value.onlyUnread ? 1 : 0) +
+    (value.onlyGroups ? 1 : 0) +
+    (value.channel_session_id != null ? 1 : 0) +
+    (etiquetas.length > 0 ? 1 : 0) +
+    (value.assigned_to != null ? 1 : 0) +
+    (value.sector_id != null ? 1 : 0);
+  const [painelAberto, setPainelAberto] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(CHAVE_DO_PAINEL_DE_FILTROS) === "1") setPainelAberto(true);
+    } catch {
+      // Armazenamento bloqueado: fica fechado, que é o padrão.
+    }
+  }, []);
+  const alternarPainel = () => {
+    setPainelAberto((aberto) => {
+      try {
+        window.localStorage.setItem(CHAVE_DO_PAINEL_DE_FILTROS, aberto ? "0" : "1");
+      } catch {
+        // Vale nesta sessão; só não sobrevive a um F5.
+      }
+      return !aberto;
+    });
+  };
+
   return (
     <div className="border-b border-border bg-background">
       <div className="space-y-2 px-3 pt-3 pb-2">
@@ -526,6 +569,46 @@ export function InboxFilters({ value, onChange, filas: filasDaOrganizacao }: Pro
               aria-label={t("Buscar conversas")}
             />
           </div>
+          <button
+            type="button"
+            onClick={alternarPainel}
+            aria-expanded={painelAberto}
+            aria-controls="painel-de-filtros-da-inbox"
+            aria-label={
+              filtrosAtivos > 0
+                ? `${t("Filtros")} (${filtrosAtivos} ${t("ligados")})`
+                : t("Filtros")
+            }
+            title={t("Filtros")}
+            data-testid="botao-filtros-da-inbox"
+            className={cn(
+              "relative flex size-9 shrink-0 items-center justify-center rounded-full border transition-colors",
+              "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              painelAberto || filtrosAtivos > 0
+                ? "border-accent bg-accent-soft text-accent"
+                : "border-transparent bg-surface-elevated text-text-muted hover:text-text",
+            )}
+          >
+            <Funnel size={16} weight={filtrosAtivos > 0 ? "fill" : "regular"} aria-hidden />
+            {filtrosAtivos > 0 && (
+              <span
+                aria-hidden
+                className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-semibold leading-none text-accent-foreground tabular-nums"
+              >
+                {filtrosAtivos}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* O PAINEL DE FILTROS — fechado por padrão, escondido por CSS (ver
+            `alternarPainel`). Tudo o que estava em três linhas fixas mora aqui. */}
+        <div
+          id="painel-de-filtros-da-inbox"
+          data-testid="painel-de-filtros-da-inbox"
+          className={cn("space-y-2", !painelAberto && "hidden")}
+        >
+        <div className="flex flex-wrap items-center gap-2">
           {/* Botão pressionável em vez de Switch: o filtro vive na mesma linha
               da busca, e o Switch com rótulo pedia uma linha inteira só para
               si numa coluna de 280px. */}
@@ -799,6 +882,7 @@ export function InboxFilters({ value, onChange, filas: filasDaOrganizacao }: Pro
             </Select>
           </div>
         )}
+        </div>
       </div>
 
       {/* As setas aparecem só quando há abas fora da área visível; a faixa e o

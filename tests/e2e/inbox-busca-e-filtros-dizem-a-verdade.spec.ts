@@ -27,12 +27,22 @@
  * O caminho feliz é o que teste manual já cobre. O que paga é provocar a falha:
  * uma letra só, espaço duplo, termo inexistente, filtro que zera a lista.
  */
-import { expect, test } from "./helpers/test";
+import { expect, test, type Page } from "./helpers/test";
 
 import { esperarCacheCurtoVencer, esperarEscritaDeFora } from "./helpers/cache-curto";
 import { lerCreds, loginComoAdmin } from "./helpers/login-admin";
 
 const CAMPO_DE_BUSCA = "Buscar conversas";
+
+/**
+ * A barra de filtros da Inbox é COMPACTA: os controles moram num painel que abre
+ * pelo ícone de filtro. Abre só se estiver fechado — o estado fica lembrado no
+ * navegador, e clicar de novo o fecharia.
+ */
+async function abrirFiltros(page: Page) {
+  const botao = page.getByTestId("botao-filtros-da-inbox");
+  if ((await botao.getAttribute("aria-expanded")) !== "true") await botao.click();
+}
 
 /**
  * ⏱️ 60s, e o número saiu de MEDIÇÃO — não de chute.
@@ -128,6 +138,7 @@ test('"Não lidos" VAI ao servidor — o defeito era filtrar a página carregada
     if (r.url().includes("unread=true")) comUnread.push(r.url());
   });
 
+  await abrirFiltros(page);
   await page.getByRole("button", { name: /Não lidos/i }).click();
 
   await expect
@@ -204,6 +215,7 @@ test("número e Não lidos sobrevivem à recarga e permanecem na sua organizaç�
   };
   const numero = page.getByRole("combobox", { name: "Filtrar por número de WhatsApp" });
   const naoLidos = page.getByRole("button", { name: "Não lidos", exact: true });
+  await abrirFiltros(page);
   try {
     const canais: { org: string; id: string; nome: string }[] = [];
     for (const letra of ["A", "B"]) {

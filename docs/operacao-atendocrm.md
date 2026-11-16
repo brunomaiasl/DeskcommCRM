@@ -40,10 +40,15 @@ O branch antigo do servidor (`deploy/vps-local`) foi mantido e há backups do
    ```bash
    cd /root/DeskcommCRM
    git fetch fork feat/feegow-agenda && git merge --ff-only fork/feat/feegow-agenda
-   docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml pull app worker scheduler
+   docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml pull worker scheduler
+   # O app tem `pull_policy: never` no compose: o `pull` do compose o PULA
+   # ("app Skipped") e ele continuaria na imagem velha. Baixe a do app à mão:
+   docker pull ghcr.io/brunomaiasl/deskcommcrm:feat-feegow-agenda
    docker compose -f docker-compose.prod.yml -f docker-compose.traefik.yml up -d --no-deps app worker scheduler
    ```
-4. Conferir: `docker ps | grep deskcommcrm` (todos `healthy`) e abrir o site.
+4. Conferir: `docker ps | grep deskcommcrm` (todos `healthy`), que o app roda a
+   imagem nova (`docker inspect deskcommcrm-app-1 --format '{{.Image}}'` igual ao
+   `Id` de `docker image inspect` da tag) e abrir o site.
 
 **Mudança de banco (migration)** nunca vai avulsa em produção: backup antes e
 aplicação na ordem do `supabase/baseline.sql`.

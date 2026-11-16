@@ -21148,6 +21148,7 @@ export const DICIONARIO: Traducoes = {
   },
   "Transferir para a fila": { es: "Transferir a la fila" },
   "Filas": { es: "Filas" },
+  "Filtros": { es: "Filtros" },
   "1 conversa esperando": { es: "1 conversación esperando" },
   "conversas esperando": { es: "conversaciones esperando" },
   "Conversa transferida para a fila.": { es: "Conversación transferida a la fila." },
