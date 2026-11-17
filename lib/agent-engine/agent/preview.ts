@@ -235,6 +235,15 @@ export const SCENARIO_READS = new Set([
   // em "vou confirmar e te retorno". Dado de contato/lead continua fora daqui.
   'crm_search_products',
   'crm_search_knowledge',
+  // Agenda do Feegow: especialidades, médicos, unidades e horários livres são da
+  // CLÍNICA, como o `crm_find_free_slots` da agenda nativa. Sem eles o Testar não
+  // mostra horário e o agente transfere para humano. Paciente (busca, consultas
+  // marcadas) e qualquer escrita continuam fora: exigem contato real.
+  'crm_feegow_list_specialties',
+  'crm_feegow_list_professionals',
+  'crm_feegow_list_units',
+  'crm_feegow_next_available',
+  'crm_feegow_available_slots',
 ]);
 /**
  * A cadeia do Testar (sandbox): a de produção, com DOIS vetos rebaixados a aviso.

@@ -31,6 +31,19 @@ describe("segurança da prévia: leituras de cenário não podem virar escrita",
     expect(SCENARIO_READS.has("crm_search_knowledge")).toBe(true);
   });
 
+  it("agenda do Feegow (dado da clínica) roda no teste; dado de paciente não", () => {
+    for (const nome of [
+      "crm_feegow_list_specialties",
+      "crm_feegow_list_professionals",
+      "crm_feegow_list_units",
+      "crm_feegow_next_available",
+      "crm_feegow_available_slots",
+    ])
+      expect(SCENARIO_READS.has(nome), nome).toBe(true);
+    expect(SCENARIO_READS.has("crm_feegow_find_patient")).toBe(false);
+    expect(SCENARIO_READS.has("crm_feegow_list_patient_appointments")).toBe(false);
+  });
+
   it("dado de contato continua exigindo contato real no modo teste", () => {
     expect(SCENARIO_READS.has("crm_get_contact")).toBe(false);
     expect(SCENARIO_READS.has("crm_search_contacts")).toBe(false);
