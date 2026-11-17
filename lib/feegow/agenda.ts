@@ -275,9 +275,10 @@ export function filtrarEspecialidades(todas: Especialidade[], termo?: string): E
     })
     .filter((x): x is { e: Especialidade; nota: number } => x !== null)
     .sort((a, b) => b.nota - a.nota);
-  if (pontuadas.length === 0) return [];
+  const primeira = pontuadas[0];
+  if (!primeira) return [];
   // Só as que casam tão bem quanto a melhor: "clínico geral" não traz "Cirurgia Geral".
-  const melhor = pontuadas[0].nota;
+  const melhor = primeira.nota;
   return pontuadas.filter((x) => x.nota >= melhor - 0.01).map((x) => x.e);
 }
 
