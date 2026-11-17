@@ -25,6 +25,7 @@ vi.mock("@/lib/instalacao/config", () => ({
 
 import { esquecerFeegowConfig } from "@/lib/feegow/config";
 import {
+  filtrarEspecialidades,
   limparCacheDoFeegow,
   normalizarDisponibilidade,
   primeirosHorarios,
@@ -122,6 +123,49 @@ describe("datas", () => {
   it("'hoje' é o de São Paulo, não o do servidor em UTC", () => {
     // 02:30 UTC do dia 13 ainda é 23:30 do dia 12 em Brasília.
     expect(agoraEmSaoPaulo(new Date("2026-11-13T02:30:00Z"))).toEqual({ data: "2026-11-12", hora: "23:30" });
+  });
+});
+
+// ─── especialidades: o jeito que o paciente fala ────────────────────────────
+
+describe("filtrarEspecialidades", () => {
+  // Nomes reais da Med Anchieta (Feegow, 17/11/2026).
+  const ESP = [
+    [227, "Clínica Geral"],
+    [296, "ODONTOLOGIA ( CLINICO GERAL)"],
+    [90, "Cirurgia Geral"],
+    [96, "Cardiologia"],
+    [126, "Oftalmologia"],
+    [141, "Psiquiatria"],
+    [271, "Ginecologia"],
+    [134, "Pediatria Geral"],
+    [254, "Odontologia (dentística)"],
+  ].map(([id, nome]) => ({ especialidade_id: id as number, nome: nome as string, consulta_id: null }));
+  const ids = (termo: string) => filtrarEspecialidades(ESP, termo).map((e) => e.especialidade_id);
+
+  it("'clínico geral' é a Clínica Geral — não o dentista nem a cirurgia", () => {
+    for (const t of ["clinico geral", "clínico geral", "Clínico", "clínica geral", "médico clínico", "consulta com clinico geral"])
+      expect(ids(t), t).toEqual([227]);
+  });
+
+  it("nome da profissão casa com o da especialidade", () => {
+    expect(ids("cardiologista")).toEqual([96]);
+    expect(ids("oftalmologista")).toEqual([126]);
+    expect(ids("oculista")).toEqual([126]);
+    expect(ids("psiquiatra")).toEqual([141]);
+    expect(ids("ginecologista")).toEqual([271]);
+    expect(ids("pediatra")).toEqual([134]);
+  });
+
+  it("odontologia só aparece quando o pedido fala em dente", () => {
+    expect(ids("dentista").every((id) => id === 296 || id === 254)).toBe(true);
+    expect(ids("dentista").length).toBeGreaterThan(0);
+    expect(ids("geral")).not.toContain(296);
+  });
+
+  it("sem termo devolve todas; termo sem par devolve vazio", () => {
+    expect(filtrarEspecialidades(ESP).length).toBe(ESP.length);
+    expect(ids("astronauta")).toEqual([]);
   });
 });
 

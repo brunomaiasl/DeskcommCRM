@@ -219,9 +219,66 @@ export async function listarEspecialidades(termo?: string): Promise<Especialidad
       })
       .filter((e): e is Especialidade => e !== null);
   });
+  return filtrarEspecialidades(todas, termo);
+}
+
+/** Palavras do paciente que não dizem a especialidade ("consulta com o médico de..."). */
+const PALAVRAS_VAZIAS = new Set([
+  "a", "o", "as", "os", "de", "da", "do", "das", "dos", "com", "e", "para", "pra", "um", "uma",
+  "consulta", "consultas", "medico", "medica", "medicos", "dr", "dra", "doutor", "doutora", "especialista",
+]);
+
+/** Como o paciente fala → como a especialidade se chama no Feegow. */
+const SINONIMOS: Array<[RegExp, string]> = [
+  [/\b(clinic[oa]s?|medic[oa] geral)\b/, "clinica geral"],
+  [/\b(oculista|olhos?|vista)\b/, "oftalmologia"],
+  [/\b(dentista|dente|dentes)\b/, "odontologia"],
+  [/\b(coracao)\b/, "cardiologia"],
+  [/\b(pele)\b/, "dermatologia"],
+  [/\b(crianca|criancas|infantil)\b/, "pediatria"],
+];
+
+const ehOdonto = (texto: string) => /odonto|dent/.test(texto);
+
+/**
+ * Acha a especialidade pelo jeito que o PACIENTE fala, não pelo nome exato do
+ * Feegow: "clínico geral" é "Clínica Geral", "cardiologista" é "Cardiologia".
+ * Cada palavra do pedido casa pelo radical (6 letras) com alguma palavra do nome;
+ * só as que casam tão bem quanto a melhor voltam. Odontologia só entra se o
+ * pedido falar em dente/dentista — senão "clínico geral" virava
+ * "ODONTOLOGIA ( CLINICO GERAL)" (bug visto em 17/11 no Testar).
+ */
+export function filtrarEspecialidades(todas: Especialidade[], termo?: string): Especialidade[] {
   if (!termo || !termo.trim()) return todas;
-  const alvo = normalizar(termo);
-  return todas.filter((e) => normalizar(e.nome).includes(alvo));
+  let pedido = normalizar(termo).replace(/[^a-z0-9 ]+/g, " ");
+  for (const [padrao, nome] of SINONIMOS) if (padrao.test(pedido)) pedido = `${pedido} ${nome}`;
+  const radicais = [
+    ...new Set(
+      pedido
+        .split(/\s+/)
+        .filter((p) => p && !PALAVRAS_VAZIAS.has(p))
+        .map((p) => p.slice(0, 6)),
+    ),
+  ];
+  if (radicais.length === 0) return todas;
+  const querOdonto = ehOdonto(pedido);
+  const literal = normalizar(termo);
+
+  const pontuadas = todas
+    .map((e) => {
+      const nome = normalizar(e.nome);
+      if (ehOdonto(nome) && !querOdonto) return null;
+      const palavras = nome.split(/[^a-z0-9]+/).filter(Boolean);
+      const casadas = palavras.filter((w) => radicais.some((r) => w.startsWith(r))).length;
+      if (casadas === 0) return null;
+      return { e, nota: casadas / palavras.length + (nome.includes(literal) ? 1 : 0) };
+    })
+    .filter((x): x is { e: Especialidade; nota: number } => x !== null)
+    .sort((a, b) => b.nota - a.nota);
+  if (pontuadas.length === 0) return [];
+  // Só as que casam tão bem quanto a melhor: "clínico geral" não traz "Cirurgia Geral".
+  const melhor = pontuadas[0].nota;
+  return pontuadas.filter((x) => x.nota >= melhor - 0.01).map((x) => x.e);
 }
 
 export async function obterEspecialidade(id: number): Promise<Especialidade | null> {
