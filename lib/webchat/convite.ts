@@ -89,6 +89,15 @@ async function convidar(
   });
 
   if (!envio.enviado) {
+    // Convite manual ou automático: o motivo REAL (visto em 18/11: "falhou" sem dizer por quê).
+    logger.warn("webchat: link não enviado pelo WhatsApp", {
+      organization_id: conversa.organization_id,
+      conversation_id: conversa.id,
+      origem: args.origem,
+      motivo: envio.motivo,
+      detalhe: envio.detalhe ?? null,
+      request_id: args.requestId,
+    });
     // O link que ninguém recebeu não fica valendo.
     await revogarLinks(admin, conversa.organization_id, conversa.id, "convite_nao_enviado");
     return {
