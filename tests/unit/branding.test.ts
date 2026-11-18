@@ -930,6 +930,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
       "sufixo do JID do WhatsApp. Aparece em `lib/waha/resolve-contact-whatsapp-id.ts` desde antes desta régua existir, num `endsWith` que distingue `@lid`, `@c.us` e `@s.whatsapp.net` — é o protocolo do WhatsApp falando, não endereço que o produto chama nem palavra de interface. Trocar pela marca do revendedor faz o CRM deixar de reconhecer o identificador que o próprio WhatsApp manda.",
   },
   // ── destino de chamada: o código fala com eles, sempre foi assim ──────────
+  "api.feegow.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint da API do Feegow (agenda, pacientes e procedimentos da clínica), a base padrão de `lib/feegow/config.ts`. É o destino dos requests da integração: trocar pelo domínio do revendedor faria a agenda não chegar a lugar nenhum.",
+  },
   "api.openai.com": {
     categoria: "FORNECEDOR",
     motivo:
