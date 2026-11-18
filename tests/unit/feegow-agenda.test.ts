@@ -40,6 +40,8 @@ import { agoraEmSaoPaulo, isoParaBR, paraIso, somarDias } from "@/lib/feegow/dat
 import {
   crmFeegowBookAppointment,
   crmFeegowCancelAppointment,
+  crmFeegowCreatePatient,
+  crmFeegowFindPatient,
   crmFeegowFindPatientByPhone,
   crmFeegowListUnits,
   crmFeegowNextAvailable,
@@ -93,6 +95,28 @@ function simularFeegow(rota: Rota) {
 
 const ok = (content: unknown) => ({ body: { success: true, content } });
 
+/** O CPF do paciente 5 nos testes (o Feegow devolve o cadastro dele). */
+const CPF = "123.456.789-09";
+
+/** Responde a busca do CPF (paciente `id`) e delega o resto. */
+function comPaciente(rota: Rota, id = 5): Rota {
+  return (c) => (c.path === "patient/search" ? ok([{ id, nome: "Ana Teste" }]) : rota(c));
+}
+
+/**
+ * A marcação/remarcação/cancelamento em DUAS chamadas (a regra de 18/11): a 1ª
+ * devolve o resumo e o código; a 2ª, com o código, executa.
+ */
+async function emDuasEtapas(
+  tool: { handler: (input: never, ctx: McpContext) => Promise<unknown> },
+  input: object,
+  c: McpContext = ctx,
+) {
+  const primeira = (await tool.handler(input as never, c)) as { codigo_confirmacao?: string };
+  if (!primeira.codigo_confirmacao) return primeira;
+  return tool.handler({ ...input, codigo_confirmacao: primeira.codigo_confirmacao } as never, c);
+}
+
 const PROFISSIONAIS = ok([
   { profissional_id: 7, nome: "Dra. Ana", especialidades: [{ especialidade_id: 95, nome_especialidade: "Dermatologia" }] },
   { profissional_id: 9, nome: "Dr. Beto", especialidades: [{ especialidade_id: 95, nome_especialidade: "Dermatologia" }] },
@@ -100,6 +124,7 @@ const PROFISSIONAIS = ok([
 
 beforeEach(() => {
   process.env.FEEGOW_API_TOKEN = TOKEN;
+  process.env.INTERNAL_SECRET = "segredo-de-teste";
   delete process.env.FEEGOW_CANAL_ID;
   delete process.env.FEEGOW_UNIDADE_ID;
   limparCacheDoFeegow();
@@ -613,6 +638,7 @@ describe("crm_feegow_next_available", () => {
 
 describe("crm_feegow_book_appointment", () => {
   const pedido = {
+    cpf: CPF,
     paciente_id: 5,
     profissional_id: 7,
     especialidade_id: 95,
@@ -629,13 +655,14 @@ describe("crm_feegow_book_appointment", () => {
       if (c.path === "specialties/list") return ok([{ especialidade_id: 95, nome: "Dermatologia", consulta_id: 740 }]);
       if (c.path === "procedures/list") return ok([{ procedimento_id: 740, valor: 25000 }]);
       if (c.path === "appoints/new-appoint") return ok({ agendamento_id: 43, link: null });
+      if (c.path === "patient/search") return ok([{ id: 5, nome: "Ana Teste" }]);
       return undefined;
     };
   }
 
   it("marca no formato do Feegow, com a consulta padrão e o valor da tabela", async () => {
     simularFeegow(agendaCom(["09:00:00", "09:30:00"]));
-    const r = await executar(crmFeegowBookAppointment, pedido);
+    const r = await emDuasEtapas(crmFeegowBookAppointment, pedido);
 
     expect(r).toMatchObject({ ok: true, agendamento_id: 43 });
     const post = chamadas.find((c) => c.path === "appoints/new-appoint");
@@ -654,7 +681,7 @@ describe("crm_feegow_book_appointment", () => {
 
   it("com convênio, valor vai 0 e plano 1 (regra da API)", async () => {
     simularFeegow(agendaCom(["09:00:00"]));
-    await executar(crmFeegowBookAppointment, { ...pedido, convenio_id: 13, convenio_plano_id: 3 });
+    await emDuasEtapas(crmFeegowBookAppointment, { ...pedido, convenio_id: 13, convenio_plano_id: 3 });
     const post = chamadas.find((c) => c.path === "appoints/new-appoint");
     expect(post?.body).toMatchObject({ valor: 0, plano: 1, convenio_id: 13, convenio_plano_id: 3 });
     // A tabela de VALOR não é consultada com convênio (a busca de valor manda o
@@ -690,7 +717,7 @@ describe("crm_feegow_book_appointment", () => {
       }
       return agendaCom(["09:00:00"])(c);
     });
-    const r = await executar(crmFeegowBookAppointment, pedido);
+    const r = await emDuasEtapas(crmFeegowBookAppointment, pedido);
     expect(r).toMatchObject({ ok: true, agendamento_id: 43 });
     const post = chamadas.find((c) => c.path === "appoints/new-appoint");
     expect(post?.body).toMatchObject({ procedimento_id: 13, valor: 19000 });
@@ -728,11 +755,109 @@ describe("crm_feegow_book_appointment", () => {
 
   it("convenio_id 0 é particular: usa o valor da tabela e não manda convênio ao Feegow", async () => {
     simularFeegow(agendaCom(["09:00:00"]));
-    const r = await executar(crmFeegowBookAppointment, { ...pedido, convenio_id: 0 });
+    const r = await emDuasEtapas(crmFeegowBookAppointment, { ...pedido, convenio_id: 0 });
     expect(r).toMatchObject({ ok: true, agendamento_id: 43 });
     const post = chamadas.find((c) => c.path === "appoints/new-appoint");
     expect(post?.body).toMatchObject({ valor: 25000, plano: 0 });
     expect((post?.body as { convenio_id?: number }).convenio_id ?? 0).toBe(0);
+  });
+
+  // ── A REGRA PRINCIPAL (18/11): CPF do paciente + confirmação depois do resumo ──
+
+  it("a 1ª chamada NÃO marca: devolve o resumo e o código de confirmação", async () => {
+    simularFeegow(agendaCom(["09:00:00"]));
+    const r = (await executar(crmFeegowBookAppointment, pedido)) as Record<string, unknown>;
+    expect(r).toMatchObject({ ok: true, feito: false, etapa: "aguardando_confirmacao" });
+    expect(typeof r.codigo_confirmacao).toBe("string");
+    expect(r.resumo).toMatchObject({ consulta: { hora: "09:00", data: DIA } });
+    expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
+  });
+
+  it("código de um resumo com OUTRO horário não marca (dados_mudaram)", async () => {
+    simularFeegow(agendaCom(["09:00:00", "09:30:00"]));
+    const r1 = (await executar(crmFeegowBookAppointment, pedido)) as { codigo_confirmacao: string };
+    const r2 = await executar(crmFeegowBookAppointment, { ...pedido, hora: "09:30", codigo_confirmacao: r1.codigo_confirmacao });
+    expect(r2).toMatchObject({ ok: false, motivo: "dados_mudaram" });
+    expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
+  });
+
+  it("código forjado não marca", async () => {
+    simularFeegow(agendaCom(["09:00:00"]));
+    const r = await executar(crmFeegowBookAppointment, { ...pedido, codigo_confirmacao: "abc.def" });
+    expect(r).toMatchObject({ ok: false, motivo: "codigo_invalido" });
+    expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
+  });
+
+  it("CPF de OUTRO paciente (o incidente de 18/11): recusa e nada é marcado, nem na 2ª chamada", async () => {
+    simularFeegow(comPaciente(agendaCom(["09:00:00"]), 22009));
+    const r = await emDuasEtapas(crmFeegowBookAppointment, pedido);
+    expect(r).toMatchObject({ ok: false, motivo: "paciente_nao_confere" });
+    expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
+  });
+
+  it("CPF sem cadastro no Feegow: recusa (só marca paciente cadastrado)", async () => {
+    simularFeegow((c) => (c.path === "patient/search" ? { status: 409, body: { success: false, content: "Paciente não encontrado" } } : agendaCom(["09:00:00"])(c)));
+    const r = await emDuasEtapas(crmFeegowBookAppointment, pedido);
+    expect(r).toMatchObject({ ok: false, motivo: "paciente_nao_confere" });
+    expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
+  });
+
+  describe("dentro de uma conversa (contato do turno)", () => {
+    /** O "banco" das mensagens do paciente: só as de ENTRADA do contato do turno. */
+    function ctxComMensagens(mensagens: Array<{ body: string; sent_at: string }>): McpContext {
+      const consulta = {
+        select: () => consulta,
+        eq: () => consulta,
+        gte: () => consulta,
+        order: () => consulta,
+        limit: async () => ({ data: mensagens.map((m) => ({ ...m, created_at: m.sent_at })), error: null }),
+      };
+      return { ...ctx, contatoDoTurno: "contato-1", supabase: { from: () => consulta } } as unknown as McpContext;
+    }
+
+    it("CPF que o paciente NÃO digitou é recusado antes de tudo", async () => {
+      simularFeegow(agendaCom(["09:00:00"]));
+      const c = ctxComMensagens([{ body: "quero agendar com clínico geral", sent_at: "2026-11-18T10:00:00Z" }]);
+      const r = await crmFeegowBookAppointment.handler(pedido as never, c);
+      expect(r).toMatchObject({ ok: false, motivo: "cpf_nao_informado_pelo_paciente" });
+      expect(chamadas.some((ch) => ch.path === "appoints/new-appoint")).toBe(false);
+    });
+
+    it("sem resposta do paciente DEPOIS do resumo: não marca (o caso de marcar na mesma resposta)", async () => {
+      simularFeegow(agendaCom(["09:00:00"]));
+      const c = ctxComMensagens([{ body: "meu cpf é 123.456.789-09", sent_at: "2026-11-18T10:00:00Z" }]);
+      const r = await emDuasEtapas(crmFeegowBookAppointment, pedido, c);
+      expect(r).toMatchObject({ ok: false, motivo: "sem_resposta_do_paciente" });
+      expect(chamadas.some((ch) => ch.path === "appoints/new-appoint")).toBe(false);
+    });
+
+    it("BUSCA com CPF que o paciente não digitou: recusa sem consultar o Feegow (a origem do 22009)", async () => {
+      simularFeegow(agendaCom(["09:00:00"]));
+      const c = ctxComMensagens([{ body: "quero agendar", sent_at: "2026-11-18T10:00:00Z" }]);
+      const r = await crmFeegowFindPatient.handler({ cpf: "12345678909" } as never, c);
+      expect(r).toMatchObject({ ok: false, motivo: "cpf_nao_informado_pelo_paciente" });
+      expect(chamadas.some((ch) => ch.path === "patient/search")).toBe(false);
+    });
+
+    it("CADASTRO com nome que o paciente não escreveu: recusa e nada é criado", async () => {
+      simularFeegow(agendaCom(["09:00:00"]));
+      const c = ctxComMensagens([{ body: "cpf 12345678909, nasci em 1990", sent_at: "2026-11-18T10:00:00Z" }]);
+      const r = await crmFeegowCreatePatient.handler({ cpf: "12345678909", nome_completo: "Maria Inventada", data_nascimento: "1990-01-01" } as never, c);
+      expect(r).toMatchObject({ ok: false, motivo: "nome_nao_informado_pelo_paciente" });
+      expect(chamadas.some((ch) => ch.path === "patient/create")).toBe(false);
+    });
+
+    it("CPF digitado + paciente respondeu depois do resumo: marca", async () => {
+      simularFeegow(agendaCom(["09:00:00"]));
+      const antes = ctxComMensagens([{ body: "12345678909", sent_at: "2026-11-18T10:00:00Z" }]);
+      const r1 = (await crmFeegowBookAppointment.handler(pedido as never, antes)) as { codigo_confirmacao: string };
+      const depois = ctxComMensagens([
+        { body: "12345678909", sent_at: "2026-11-18T10:00:00Z" },
+        { body: "sim, confirmo", sent_at: new Date(Date.now() + 5_000).toISOString() },
+      ]);
+      const r2 = await crmFeegowBookAppointment.handler({ ...pedido, codigo_confirmacao: r1.codigo_confirmacao } as never, depois);
+      expect(r2).toMatchObject({ ok: true, agendamento_id: 43 });
+    });
   });
 
   it("data no passado é recusada sem chamar o Feegow", async () => {
@@ -764,20 +889,24 @@ describe("crm_feegow_cancel_appointment", () => {
       }
       if (c.path === "appoints/motives") return ok([{ id: 2, motivo: "Solicitado pelo profissional" }, { id: 1, motivo: "Solicitado pelo paciente" }]);
       if (c.path === "appoints/cancel-appoint") return ok("Agendamento cancelado");
+      if (c.path === "patient/search") return ok([{ id: 5, nome: "Ana Teste" }]);
       return undefined;
     };
   }
 
   it("agendamento de OUTRO paciente: recusa e nenhum cancelamento sai", async () => {
     simularFeegow(agendamentoDe(999));
-    const r = await executar(crmFeegowCancelAppointment, { agendamento_id: 41, paciente_id: 5 });
+    const r = await executar(crmFeegowCancelAppointment, { cpf: CPF, agendamento_id: 41, paciente_id: 5 });
     expect(r).toMatchObject({ ok: false, motivo: "agendamento_de_outro_paciente" });
     expect(chamadas.some((c) => c.path === "appoints/cancel-appoint")).toBe(false);
   });
 
   it("do próprio paciente: cancela com o motivo 'solicitado pelo paciente'", async () => {
     simularFeegow(agendamentoDe(5));
-    const r = await executar(crmFeegowCancelAppointment, { agendamento_id: 41, paciente_id: 5 });
+    const primeira = await executar(crmFeegowCancelAppointment, { cpf: CPF, agendamento_id: 41, paciente_id: 5 });
+    expect(primeira).toMatchObject({ ok: true, feito: false, etapa: "aguardando_confirmacao" });
+    expect(chamadas.some((c) => c.path === "appoints/cancel-appoint")).toBe(false);
+    const r = await emDuasEtapas(crmFeegowCancelAppointment, { cpf: CPF, agendamento_id: 41, paciente_id: 5 });
     expect(r).toMatchObject({ ok: true, cancelado: true });
     const post = chamadas.find((c) => c.path === "appoints/cancel-appoint");
     expect(post?.body).toMatchObject({ agendamento_id: 41, motivo_id: 1 });

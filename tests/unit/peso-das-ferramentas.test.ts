@@ -137,9 +137,9 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_feegow_find_patient_by_phone": { tokens: 105, motivo: "ferramenta nova: reconhece o paciente pelo celular da própria conversa, sem argumento (2026-11-18)" },
   "crm_feegow_list_patient_appointments": { tokens: 99, motivo: FEEGOW },
   "crm_feegow_create_patient": { tokens: 258, motivo: FEEGOW },
-  "crm_feegow_book_appointment": { tokens: 394, motivo: FEEGOW },
-  "crm_feegow_reschedule_appointment": { tokens: 224, motivo: FEEGOW },
-  "crm_feegow_cancel_appointment": { tokens: 165, motivo: FEEGOW },
+  "crm_feegow_book_appointment": { tokens: 494, motivo: "+100: cpf digitado pelo paciente e codigo_confirmacao (confirmação em duas chamadas) — a regra principal depois do incidente de 18/11" },
+  "crm_feegow_reschedule_appointment": { tokens: 301, motivo: "+77: cpf digitado pelo paciente e codigo_confirmacao (confirmação em duas chamadas) — a regra principal depois do incidente de 18/11" },
+  "crm_feegow_cancel_appointment": { tokens: 253, motivo: "+88: cpf digitado pelo paciente e codigo_confirmacao (confirmação em duas chamadas) — a regra principal depois do incidente de 18/11" },
   "get_lead_context": { tokens: 46, motivo: BASE },
   "send_message": { tokens: 191, motivo: "imagem_url (Spec 25 R4): a foto por endereço, com a regra de procedência na descrição" },
   "update_lead_state": { tokens: 240, motivo: BASE },
@@ -169,7 +169,9 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
 // +254 com `crm_feegow_list_units` e o filtro de unidade nas duas buscas
 // (2026-11-16), também só com o pacote `agendar`. +105 com
 // `crm_feegow_find_patient_by_phone` (2026-11-18), também só com `agendar`.
-const TETO_TOTAL = 33169;
+// +265 com o CPF digitado e a confirmação em duas chamadas nas três escritas do
+// Feegow (2026-11-18, depois de o agente marcar sozinho com o CPF de outra pessoa).
+const TETO_TOTAL = 33434;
 
 const VARIANTE = "schedule_followup (com negócio)";
 

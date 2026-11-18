@@ -63,6 +63,15 @@ import {
 } from "@/lib/feegow/client";
 import { agoraEmSaoPaulo, dataLegivel, diaDaSemana, REGEX_DATA_ISO, REGEX_HORA, somarDias } from "@/lib/feegow/datas";
 
+import {
+  conferirConfirmacao,
+  anoFoiDigitadoPeloPaciente,
+  cpfFoiDigitadoPeloPaciente,
+  emitirConfirmacao,
+  nomeFoiDigitadoPeloPaciente,
+  mensagensDoPaciente,
+  type DadosDaConfirmacao,
+} from "@/lib/feegow/confirmacao";
 import type { McpContext, McpToolDefinition } from "../types";
 
 // ─── comuns ─────────────────────────────────────────────────────────────────
@@ -141,6 +150,98 @@ const cpf = z
   .string()
   .refine((v) => soDigitos(v).length === 11, "CPF deve ter 11 dígitos")
   .describe("CPF do paciente (com ou sem pontuação).");
+
+// ─── a regra principal da agenda (lib/feegow/confirmacao.ts) ────────────────
+
+const cpfDigitado = cpf.describe("O CPF que O PACIENTE digitou nesta conversa. Nunca invente nem use de memória.");
+const codigoConfirmacao = z
+  .string()
+  .max(4096)
+  .optional()
+  .describe("Omitir na 1ª chamada (só gera o resumo). Na 2ª, o código devolvido, DEPOIS que o paciente confirmar.");
+
+/**
+ * 1. O CPF foi digitado pelo PACIENTE nesta conversa (quando há conversa), e
+ * 2. o `paciente_id` é o desse CPF no Feegow.
+ * Em 18/11 o agente marcou com um CPF que ninguém digitou — e era de outra pessoa.
+ */
+async function exigirPacienteDoCpf(ctx: McpContext, cpfInformado: string, paciente_id: number): Promise<Recusa | null> {
+  if (ctx.contatoDoTurno) {
+    const msgs = await mensagensDoPaciente(ctx.supabase, ctx.organizationId, ctx.contatoDoTurno);
+    if (!cpfFoiDigitadoPeloPaciente(cpfInformado, msgs.map((m) => m.body))) {
+      return recusa(
+        "cpf_nao_informado_pelo_paciente",
+        "Este CPF não foi digitado pelo paciente nesta conversa. NUNCA use CPF inventado, de memória ou de outra " +
+          "pessoa: peça o CPF ao paciente e espere a resposta dele. Nada foi feito.",
+      );
+    }
+  }
+  const p = await buscarPacientePorCpf(cpfInformado);
+  if (!p || p.paciente_id !== paciente_id) {
+    return recusa(
+      "paciente_nao_confere",
+      "O paciente_id não é o do CPF informado. Busque com crm_feegow_find_patient usando o CPF que o paciente " +
+        "digitou e use o paciente_id que voltar. Nada foi feito.",
+    );
+  }
+  return null;
+}
+
+/** O CPF foi digitado pelo paciente desta conversa? `null` = sim (ou não há conversa). */
+async function exigirCpfDigitado(ctx: McpContext, cpfInformado: string): Promise<Recusa | null> {
+  if (!ctx.contatoDoTurno) return null;
+  const msgs = await mensagensDoPaciente(ctx.supabase, ctx.organizationId, ctx.contatoDoTurno);
+  if (cpfFoiDigitadoPeloPaciente(cpfInformado, msgs.map((m) => m.body))) return null;
+  return recusa(
+    "cpf_nao_informado_pelo_paciente",
+    "Este CPF não foi digitado pelo paciente nesta conversa. NUNCA invente CPF nem use de memória: peça o CPF " +
+      "ao paciente e espere a resposta dele. Nada foi consultado.",
+  );
+}
+
+/**
+ * A confirmação em DUAS chamadas. Sem `codigo`: devolve o resumo e o código —
+ * nada é escrito. Com `codigo`: só segue se ele confere com os MESMOS dados e se
+ * o paciente escreveu DEPOIS do resumo. `null` = pode executar.
+ */
+async function exigirConfirmacao(
+  ctx: McpContext,
+  dados: DadosDaConfirmacao,
+  codigo: string | undefined,
+  resumo: Record<string, unknown>,
+): Promise<Recusa | Record<string, unknown> | null> {
+  if (!codigo) {
+    return {
+      ok: true,
+      feito: false,
+      etapa: "aguardando_confirmacao",
+      resumo,
+      codigo_confirmacao: emitirConfirmacao(dados),
+      mensagem:
+        "NADA foi feito ainda. Envie este resumo ao paciente (com o valor já informado) e pergunte se confirma. " +
+        "Só depois que ELE responder confirmando, chame de novo com os MESMOS dados e este codigo_confirmacao.",
+    };
+  }
+  const c = conferirConfirmacao(codigo, dados);
+  if (!c.ok) {
+    return recusa(
+      c.motivo,
+      c.motivo === "dados_mudaram"
+        ? "Os dados mudaram desde o resumo. Chame sem codigo_confirmacao para gerar um resumo novo e confirme de novo com o paciente."
+        : "Código de confirmação inválido ou vencido. Gere um resumo novo (chame sem codigo_confirmacao) e confirme com o paciente.",
+    );
+  }
+  if (ctx.contatoDoTurno) {
+    const msgs = await mensagensDoPaciente(ctx.supabase, ctx.organizationId, ctx.contatoDoTurno);
+    if (!msgs.some((m) => new Date(m.quando).getTime() > c.emitidoEm.getTime())) {
+      return recusa(
+        "sem_resposta_do_paciente",
+        "O paciente ainda não respondeu ao resumo. Envie o resumo, espere ele confirmar e só então chame de novo. Nada foi feito.",
+      );
+    }
+  }
+  return null;
+}
 
 // ─── especialidades ─────────────────────────────────────────────────────────
 
@@ -372,6 +473,9 @@ export const crmFeegowFindPatient: McpToolDefinition<typeof buscarPacienteShape>
   requiresScope: "mcp:read",
   handler: async (input, ctx) =>
     comFeegow("crm_feegow_find_patient", ctx, async () => {
+      // Em 18/11 o paciente errado (22009) veio de uma busca com CPF que ninguém digitou.
+      const naoDigitado = await exigirCpfDigitado(ctx, input.cpf);
+      if (naoDigitado) return naoDigitado;
       const paciente = await buscarPacientePorCpf(input.cpf);
       return paciente
         ? { ok: true, encontrado: true, ...paciente }
@@ -399,6 +503,26 @@ export const crmFeegowCreatePatient: McpToolDefinition<typeof criarPacienteShape
   requiresScope: "mcp:write",
   handler: async (input, ctx) =>
     comFeegow("crm_feegow_create_patient", ctx, async () => {
+      // NUNCA inventar cadastro (pedido de 18/11): CPF, nome e ano de nascimento
+      // precisam ter sido escritos pelo paciente nesta conversa.
+      const naoDigitado = await exigirCpfDigitado(ctx, input.cpf);
+      if (naoDigitado) return naoDigitado;
+      if (ctx.contatoDoTurno) {
+        const textos = (await mensagensDoPaciente(ctx.supabase, ctx.organizationId, ctx.contatoDoTurno)).map((m) => m.body);
+        if (!nomeFoiDigitadoPeloPaciente(input.nome_completo, textos)) {
+          return recusa(
+            "nome_nao_informado_pelo_paciente",
+            "O nome completo não foi escrito pelo paciente nesta conversa. Peça o nome completo a ele e use " +
+              "exatamente o que ele escrever. Nada foi cadastrado.",
+          );
+        }
+        if (input.data_nascimento && !anoFoiDigitadoPeloPaciente(input.data_nascimento, textos)) {
+          return recusa(
+            "nascimento_nao_informado_pelo_paciente",
+            "A data de nascimento não foi escrita pelo paciente nesta conversa. Peça a ele. Nada foi cadastrado.",
+          );
+        }
+      }
       // Cadastro duplicado no Feegow é sujeira que a recepção limpa à mão.
       const existente = await buscarPacientePorCpf(input.cpf);
       if (existente) return { ok: true, ja_existia: true, ...existente };
@@ -518,7 +642,8 @@ async function conferirIdsDaAgenda(especialidade_id: number, profissional_id: nu
 }
 
 const agendarShape = {
-  paciente_id: idFeegow.describe("De crm_feegow_find_patient ou crm_feegow_create_patient."),
+  cpf: cpfDigitado,
+  paciente_id: idFeegow.describe("O do CPF (crm_feegow_find_patient ou crm_feegow_create_patient)."),
   profissional_id: idFeegow,
   especialidade_id: idFeegow,
   data: dataIso,
@@ -531,14 +656,15 @@ const agendarShape = {
   convenio_plano_id: idFeegow.optional(),
   celular: z.string().optional(),
   notas: z.string().max(500).optional().describe("Observação curta para a recepção."),
+  codigo_confirmacao: codigoConfirmacao,
 };
 
 export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = {
   name: "crm_feegow_book_appointment",
   description:
-    "Marca a consulta no Feegow. SÓ chame depois que o paciente CONFIRMAR explicitamente profissional, data e " +
-    "hora. Confere se o horário ainda está livre antes de marcar; se não estiver, devolve horários alternativos " +
-    "do mesmo dia. Devolve o agendamento_id.",
+    "Marca a consulta no Feegow em DUAS chamadas: a 1ª (sem codigo_confirmacao) só confere e devolve o resumo " +
+    "para o paciente confirmar; a 2ª, com o código, marca — só depois que o paciente respondeu confirmando. " +
+    "Exige o CPF que o paciente digitou. Horário ocupado: devolve alternativas do dia.",
   inputSchema: agendarShape,
   category: "write",
   requiresRole: "ai_operator",
@@ -559,6 +685,10 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
       // indisponível" e o agente transferia para humano com a vaga livre.
       const idsInvalidos = await conferirIdsDaAgenda(input.especialidade_id, input.profissional_id);
       if (idsInvalidos) return idsInvalidos;
+
+      // 0b. A REGRA PRINCIPAL: CPF do próprio paciente, e é dele o paciente_id.
+      const semPaciente = await exigirPacienteDoCpf(ctx, input.cpf, input.paciente_id);
+      if (semPaciente) return semPaciente;
 
       // 1. o horário ainda está livre? A conversa pode ter levado minutos.
       const livres = await livresNoDia(input.especialidade_id, input.profissional_id, input.data);
@@ -627,6 +757,34 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
         }
       }
 
+      // 4. CONFIRMAÇÃO: a 1ª chamada para aqui com o resumo; a 2ª só passa com o
+      // código e com o paciente tendo respondido depois do resumo.
+      {
+        const nomes = await nomesDosProfissionais(input.especialidade_id);
+        const unidades = await unidadesPorLocalOuVazio();
+        const pendente = await exigirConfirmacao(
+          ctx,
+          {
+            acao: "marcar",
+            organizacao: ctx.organizationId,
+            contato: ctx.contatoDoTurno ?? "",
+            dados: {
+              paciente_id: input.paciente_id,
+              profissional_id: input.profissional_id,
+              especialidade_id: input.especialidade_id,
+              procedimento_id,
+              data: input.data,
+              hora: horaCurta,
+              local_id: slot.local_id,
+              convenio_id: convenioId ?? null,
+            },
+          },
+          input.codigo_confirmacao,
+          { consulta: descreverHorario(slot, nomes, unidades) },
+        );
+        if (pendente) return pendente;
+      }
+
       const criado = await criarAgendamento({
         paciente_id: input.paciente_id,
         profissional_id: input.profissional_id,
@@ -675,24 +833,40 @@ function ehRecusa(v: Agendamento | Recusa): v is Recusa {
 }
 
 const cancelarShape = {
+  cpf: cpfDigitado,
   agendamento_id: idFeegow,
   paciente_id: idFeegow.describe("O dono do agendamento — é conferido."),
   motivo: z.string().max(300).optional().describe("O que o paciente disse, em poucas palavras."),
+  codigo_confirmacao: codigoConfirmacao,
 };
 
 export const crmFeegowCancelAppointment: McpToolDefinition<typeof cancelarShape> = {
   name: "crm_feegow_cancel_appointment",
   description:
-    "Desmarca uma consulta no Feegow a pedido do paciente. SÓ chame depois que o paciente confirmar qual " +
-    "consulta quer desmarcar. Confere que o agendamento é do paciente. Ofereça remarcar antes de cancelar.",
+    "Desmarca uma consulta no Feegow em DUAS chamadas (1ª: resumo para o paciente confirmar; 2ª: com o código, " +
+    "depois da confirmação). Exige o CPF que o paciente digitou e confere o dono. Ofereça remarcar antes.",
   inputSchema: cancelarShape,
   category: "write",
   requiresRole: "ai_operator",
   requiresScope: "mcp:write",
   handler: async (input, ctx) =>
     comFeegow("crm_feegow_cancel_appointment", ctx, async () => {
+      const semPaciente = await exigirPacienteDoCpf(ctx, input.cpf, input.paciente_id);
+      if (semPaciente) return semPaciente;
       const dono = await conferirDono(input.agendamento_id, input.paciente_id);
       if (ehRecusa(dono)) return dono;
+      const pendente = await exigirConfirmacao(
+        ctx,
+        {
+          acao: "cancelar",
+          organizacao: ctx.organizationId,
+          contato: ctx.contatoDoTurno ?? "",
+          dados: { agendamento_id: input.agendamento_id, paciente_id: input.paciente_id },
+        },
+        input.codigo_confirmacao,
+        { agendamento_id: input.agendamento_id, data: dono.data, hora: dono.horario, profissional_id: dono.profissional_id },
+      );
+      if (pendente) return pendente;
       await cancelarAgendamento({
         agendamento_id: input.agendamento_id,
         motivo_id: await motivoPadrao(),
@@ -703,19 +877,20 @@ export const crmFeegowCancelAppointment: McpToolDefinition<typeof cancelarShape>
 };
 
 const remarcarShape = {
+  cpf: cpfDigitado,
   agendamento_id: idFeegow,
   paciente_id: idFeegow.describe("O dono do agendamento — é conferido."),
   nova_data: dataIso,
   nova_hora: hora,
   motivo: z.string().max(300).optional(),
+  codigo_confirmacao: codigoConfirmacao,
 };
 
 export const crmFeegowRescheduleAppointment: McpToolDefinition<typeof remarcarShape> = {
   name: "crm_feegow_reschedule_appointment",
   description:
-    "Remarca uma consulta existente para nova data e hora com o MESMO profissional. Busque antes os horários " +
-    "livres desse profissional e só chame depois que o paciente confirmar o novo horário. Confere que o " +
-    "agendamento é do paciente e que o novo horário está livre.",
+    "Remarca uma consulta para nova data e hora com o MESMO profissional, em DUAS chamadas (1ª: resumo para o " +
+    "paciente confirmar; 2ª: com o código, depois da confirmação). Exige o CPF que o paciente digitou.",
   inputSchema: remarcarShape,
   category: "write",
   requiresRole: "ai_operator",
@@ -724,6 +899,8 @@ export const crmFeegowRescheduleAppointment: McpToolDefinition<typeof remarcarSh
     if (input.nova_data < agoraEmSaoPaulo().data) return recusa("data_no_passado", "Essa data já passou.");
 
     return comFeegow("crm_feegow_reschedule_appointment", ctx, async () => {
+      const semPaciente = await exigirPacienteDoCpf(ctx, input.cpf, input.paciente_id);
+      if (semPaciente) return semPaciente;
       const ag = await conferirDono(input.agendamento_id, input.paciente_id);
       if (ehRecusa(ag)) return ag;
       if (ag.profissional_id === null || ag.especialidade_id === null) {
@@ -743,6 +920,23 @@ export const crmFeegowRescheduleAppointment: McpToolDefinition<typeof remarcarSh
           alternativas_no_mesmo_dia: livres.slice(0, 5).map((h) => descreverHorario(h, nomes, unidades)),
         };
       }
+
+      const pendente = await exigirConfirmacao(
+        ctx,
+        {
+          acao: "remarcar",
+          organizacao: ctx.organizationId,
+          contato: ctx.contatoDoTurno ?? "",
+          dados: { agendamento_id: input.agendamento_id, paciente_id: input.paciente_id, nova_data: input.nova_data, nova_hora: horaCurta },
+        },
+        input.codigo_confirmacao,
+        {
+          agendamento_id: input.agendamento_id,
+          de: { data: ag.data, hora: ag.horario },
+          para: { data: input.nova_data, hora: horaCurta, data_legivel: dataLegivel(input.nova_data) },
+        },
+      );
+      if (pendente) return pendente;
 
       await remarcarAgendamento({
         agendamento_id: input.agendamento_id,
