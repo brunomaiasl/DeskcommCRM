@@ -96,6 +96,11 @@ export interface Conversation {
    * aparece com `true`, porque afirmar o contrário seria pior.
    */
   usable_for_rag?: boolean;
+  /** Rota da resposta (`web` = sai pela página do Web Chat). Opcional: cache antigo não tem. */
+  webchat_rota?: string | null;
+  webchat_desativado?: boolean | null;
+  /** O selo da lista: atendida pelo Web Chat, e o paciente está na página agora? (`lib/webchat/selo.ts`) */
+  webchat?: { ativo: boolean; online: boolean } | null;
   created_at: string;
   updated_at: string;
 }

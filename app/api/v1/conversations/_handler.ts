@@ -21,6 +21,7 @@ import { normalizarTermoDeBusca, termoSemAcento, termoSeguroParaOr } from "@/lib
 import { ORDEM_DA_ESPERA, ehAFila, comPreFiltroDoComando } from "@/lib/inbox/comando-da-conversa";
 import { aplicarMarcadores } from "@/lib/inbox/marcador-da-conversa";
 import { exigirControleDaConversa } from "@/lib/inbox/controle-da-conversa";
+import { seloDoWebchat, type LinkParaSelo } from "@/lib/webchat/selo";
 
 // O escape da gramática do `or=` mora na régua única (`lib/inbox/termo-de-busca`);
 // continua exportado daqui porque é daqui que os testes o leem desde a #3918.
@@ -83,6 +84,7 @@ const SELECT_COLS = `
   comando_da_conversa,
   automatico_da_conversa,
   usable_for_rag,
+  webchat_rota, webchat_desativado,
   contacts:contact_id (id, display_name, name, address_book_name, phone_number, is_anonymized, tags, is_blocked, is_personal, contact_type, avatar_storage_path, force_human),
   channel_sessions:channel_session_id (phone_number, display_name, provider, social_platform:metadata->>social_platform)
 `;
@@ -538,6 +540,7 @@ export async function listConversationsHandler(
   const rows = (data ?? []) as unknown as Conversation[];
   const hasMore = rows.length > q.limit;
   const page = hasMore ? rows.slice(0, q.limit) : rows;
+  await marcarWebchat(page, ctx.organization_id);
   const last = page[page.length - 1];
   const cursor =
     hasMore && last
@@ -545,6 +548,37 @@ export async function listConversationsHandler(
       : null;
 
   return { conversations: page, cursor, has_more: hasMore };
+}
+
+/**
+ * O selo do Web Chat de cada linha da página (pedido de 18/11). `webchat_links`
+ * não tem FK para `conversations` (não dá para embutir no SELECT), então é UMA
+ * consulta a mais por página, só dos links vivos dos ids da página. Service role
+ * com `organization_id` do contexto — a tabela não abre leitura para a sessão.
+ * Falhar aqui nunca derruba a lista: a linha só fica sem o selo.
+ */
+async function marcarWebchat(page: Conversation[], organizationId: string): Promise<void> {
+  if (page.length === 0) return;
+  let links: Array<LinkParaSelo & { conversation_id: string }> = [];
+  try {
+    const { data } = await createAdminClient()
+      .from("webchat_links")
+      .select("conversation_id, last_seen_at, revoked_at, expires_at")
+      .eq("organization_id", organizationId)
+      .in("conversation_id", page.map((c) => c.id))
+      .is("revoked_at", null)
+      .gt("expires_at", new Date().toISOString());
+    links = (data ?? []) as typeof links;
+  } catch {
+    links = [];
+  }
+  for (const c of page) {
+    c.webchat = seloDoWebchat(
+      c.webchat_rota,
+      c.webchat_desativado,
+      links.filter((l) => l.conversation_id === c.id),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

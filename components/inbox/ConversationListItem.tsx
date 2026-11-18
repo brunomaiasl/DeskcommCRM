@@ -5,7 +5,7 @@ import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import type { Locale } from "date-fns";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { Check, Robot, Sparkle } from "@/lib/ui/icons";
+import { ChatCircle, Check, Robot, Sparkle } from "@/lib/ui/icons";
 import { ChannelLogo } from "@/components/inbox/ChannelLogo";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -274,6 +274,18 @@ export function ConversationListItem({
     ? t("Deixar de usar como exemplo")
     : t("Usar como exemplo para a IA");
 
+  // O selo do Web Chat (pedido de 18/11): `webchat` vem calculado pela rota da lista.
+  const seloWeb = conversation.webchat?.ativo ? conversation.webchat : null;
+  const rotuloWeb = seloWeb
+    ? isAi
+      ? seloWeb.online
+        ? t("IA atendendo no Web Chat — paciente na página agora")
+        : t("IA atendendo no Web Chat — paciente fora da página")
+      : seloWeb.online
+        ? t("Atendimento no Web Chat — paciente na página agora")
+        : t("Atendimento no Web Chat — paciente fora da página")
+    : "";
+
   const temSelos =
     visibleTags.length > 0 ||
     exemploMarcado ||
@@ -529,6 +541,8 @@ export function ConversationListItem({
         pior fundo de cada tema (linha selecionada, `bg-accent-soft`): 5,74:1 no
         claro (#5d594f sobre #e4ebe0) e 4,23:1 no escuro (#8e8b7f sobre #272b20).
       */}
+      {(onAlternarExemplo || seloWeb) && (
+      <div className="mr-1 mt-2.5 flex shrink-0 flex-col items-center gap-1.5">
       {onAlternarExemplo && (
         <button
           type="button"
@@ -538,7 +552,7 @@ export function ConversationListItem({
           title={rotuloExemplo}
           onClick={() => onAlternarExemplo(conversation.id, !exemploMarcado)}
           className={cn(
-            "mr-1 mt-2.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm transition-colors",
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-sm transition-colors",
             "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent",
             exemploMarcado
               ? "text-accent hover:bg-accent-soft"
@@ -547,6 +561,32 @@ export function ConversationListItem({
         >
           <Sparkle size={14} weight={exemploMarcado ? "fill" : "regular"} aria-hidden />
         </button>
+      )}
+      {/*
+        O SELO DO WEB CHAT (pedido de 18/11, no molde do Clinia): a conversa está
+        sendo atendida pela página. Bolinha verde = o paciente está com a página
+        aberta agora; cinza = saiu. O robô entra junto quando quem responde é a IA.
+        Não é botão: só informa, por isso vive fora do botão da linha sem ser
+        controle. Cor nunca sozinha — o `title`/`aria-label` diz o estado.
+      */}
+      {seloWeb && (
+        <span
+          role="img"
+          data-testid="selo-webchat"
+          data-webchat-online={seloWeb.online ? "true" : "false"}
+          aria-label={rotuloWeb}
+          title={rotuloWeb}
+          className="inline-flex h-5 items-center gap-1 rounded-full border border-border bg-surface-elevated px-1.5 text-text-muted"
+        >
+          {isAi && <Robot size={11} weight="duotone" aria-hidden />}
+          <ChatCircle size={11} weight="regular" aria-hidden />
+          <span
+            className={cn("h-1.5 w-1.5 rounded-full", seloWeb.online ? "bg-success" : "bg-muted-foreground")}
+            aria-hidden
+          />
+        </span>
+      )}
+      </div>
       )}
     </div>
   );
