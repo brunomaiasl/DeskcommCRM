@@ -165,6 +165,8 @@ export async function conviteNaPrimeiraMensagem(
         organization_id: args.organizationId,
         conversation_id: args.conversationId,
         motivo: r.motivo,
+        // Sem o detalhe, "falhou" não diz POR QUÊ (visto em 18/11: link revogado 0,15 s depois de criado).
+        ...(r.detalhe ? { detalhe: r.detalhe } : {}),
       });
     }
   } catch (err) {

@@ -444,6 +444,27 @@ async function livresNoDia(especialidade_id: number, profissional_id: number, da
   return buscarHorarios({ especialidade_id, profissional_id, de: data, ate: data });
 }
 
+/**
+ * A especialidade existe e o profissional atende nela? `null` = tudo certo.
+ * Devolve a recusa que MANDA o modelo buscar de novo (e proíbe transferir por isso).
+ */
+async function conferirIdsDaAgenda(especialidade_id: number, profissional_id: number): Promise<Recusa | null> {
+  const orientacao =
+    "Esses ids não existem no Feegow — não são os do paciente nem os de outra conversa. Chame " +
+    "crm_feegow_list_specialties e crm_feegow_next_available (ou crm_feegow_available_slots) de novo e use EXATAMENTE " +
+    "os ids devolvidos (especialidade_id, profissional_id, local_id). Não transfira por causa disto.";
+  const esp = await obterEspecialidade(especialidade_id);
+  if (!esp) return recusa("ids_invalidos", `Especialidade ${especialidade_id} não existe. ${orientacao}`);
+  const profissionais = await listarProfissionais({ especialidade_id });
+  if (!profissionais.some((p) => p.profissional_id === profissional_id)) {
+    return recusa(
+      "ids_invalidos",
+      `O profissional ${profissional_id} não atende ${esp.nome}. ${orientacao}`,
+    );
+  }
+  return null;
+}
+
 const agendarShape = {
   paciente_id: idFeegow.describe("De crm_feegow_find_patient ou crm_feegow_create_patient."),
   profissional_id: idFeegow,
@@ -454,7 +475,7 @@ const agendarShape = {
   procedimento_id: idFeegow
     .optional()
     .describe("Omitir para usar a consulta padrão da especialidade."),
-  convenio_id: idFeegow.optional().describe("Só se o atendimento for pelo convênio."),
+  convenio_id: idFeegow.optional().describe("Só convênio; particular: omita."),
   convenio_plano_id: idFeegow.optional(),
   celular: z.string().optional(),
   notas: z.string().max(500).optional().describe("Observação curta para a recepção."),
@@ -476,6 +497,16 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
 
     return comFeegow("crm_feegow_book_appointment", ctx, async () => {
       const horaCurta = input.hora.slice(0, 5);
+      // `convenio_id: 0` é o modelo dizendo "particular": no Feegow 0 NÃO é convênio.
+      const convenioId = input.convenio_id ? input.convenio_id : undefined;
+      const convenioPlanoId = convenioId ? input.convenio_plano_id : undefined;
+
+      // 0. os ids existem e combinam? O modelo só vê os ids da busca enquanto está no mesmo turno;
+      // numa conversa que anda mensagem a mensagem ele os esquece e INVENTA (visto em 18/11:
+      // profissional 2594 / especialidade 11 no lugar de 150 / 227). Antes isto virava "horário
+      // indisponível" e o agente transferia para humano com a vaga livre.
+      const idsInvalidos = await conferirIdsDaAgenda(input.especialidade_id, input.profissional_id);
+      if (idsInvalidos) return idsInvalidos;
 
       // 1. o horário ainda está livre? A conversa pode ter levado minutos.
       const livres = await livresNoDia(input.especialidade_id, input.profissional_id, input.data);
@@ -521,7 +552,7 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
       // 3. valor: com convênio é 0 (regra da API); particular, o da tabela.
       let valor = 0;
       let aviso: string | undefined;
-      if (input.convenio_id === undefined) {
+      if (convenioId === undefined) {
         const tabela = await valorDoProcedimento({
           procedimento_id,
           especialidade_id: input.especialidade_id,
@@ -544,8 +575,8 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
         data: input.data,
         hora: horaCurta,
         valor,
-        convenio_id: input.convenio_id,
-        convenio_plano_id: input.convenio_plano_id,
+        convenio_id: convenioId,
+        convenio_plano_id: convenioPlanoId,
         celular: input.celular,
         notas: input.notas ?? "Agendado pelo assistente do WhatsApp",
       });

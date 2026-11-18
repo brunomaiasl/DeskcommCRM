@@ -569,6 +569,32 @@ describe("crm_feegow_book_appointment", () => {
     expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
   });
 
+  it("ids inventados (modelo esqueceu os da busca): recusa 'ids_invalidos', manda buscar de novo e NÃO marca", async () => {
+    simularFeegow(agendaCom(["09:00:00"]));
+    // Visto em 18/11: profissional 2594 / especialidade 11 no lugar de 150 / 227.
+    const semProfissional = (await executar(crmFeegowBookAppointment, { ...pedido, profissional_id: 2594 })) as {
+      ok: boolean;
+      motivo: string;
+      mensagem: string;
+    };
+    expect(semProfissional).toMatchObject({ ok: false, motivo: "ids_invalidos" });
+    expect(semProfissional.mensagem).toContain("crm_feegow_next_available");
+    expect(semProfissional.mensagem).toContain("Não transfira");
+
+    const semEspecialidade = await executar(crmFeegowBookAppointment, { ...pedido, especialidade_id: 11 });
+    expect(semEspecialidade).toMatchObject({ ok: false, motivo: "ids_invalidos" });
+    expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
+  });
+
+  it("convenio_id 0 é particular: usa o valor da tabela e não manda convênio ao Feegow", async () => {
+    simularFeegow(agendaCom(["09:00:00"]));
+    const r = await executar(crmFeegowBookAppointment, { ...pedido, convenio_id: 0 });
+    expect(r).toMatchObject({ ok: true, agendamento_id: 43 });
+    const post = chamadas.find((c) => c.path === "appoints/new-appoint");
+    expect(post?.body).toMatchObject({ valor: 25000, plano: 0 });
+    expect((post?.body as { convenio_id?: number }).convenio_id ?? 0).toBe(0);
+  });
+
   it("data no passado é recusada sem chamar o Feegow", async () => {
     simularFeegow(agendaCom(["09:00:00"]));
     const r = await executar(crmFeegowBookAppointment, { ...pedido, data: "2000-01-01" });
