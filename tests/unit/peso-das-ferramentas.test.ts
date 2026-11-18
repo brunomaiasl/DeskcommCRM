@@ -131,8 +131,8 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_feegow_list_specialties": { tokens: 121, motivo: FEEGOW },
   "crm_feegow_list_professionals": { tokens: 120, motivo: FEEGOW },
   "crm_feegow_list_units": { tokens: 116, motivo: "ferramenta nova: as unidades com endereço, para perguntar a preferência do paciente antes de buscar horário (2026-11-16)" },
-  "crm_feegow_next_available": { tokens: 375, motivo: "+87: filtro `unidade_id` (a unidade que o paciente escolheu) e a descrição dizendo que busca em todas as unidades e devolve a unidade de cada horário (2026-11-16)" },
-  "crm_feegow_available_slots": { tokens: 321, motivo: "+51: filtro `unidade_id` (a unidade que o paciente escolheu) (2026-11-16)" },
+  "crm_feegow_next_available": { tokens: 411, motivo: "+36: especialidade pelo NOME (o servidor resolve o id; id inventado é recusado) — 2026-11-18" },
+  "crm_feegow_available_slots": { tokens: 362, motivo: "+41: especialidade pelo NOME (o servidor resolve o id; id inventado é recusado) — 2026-11-18" },
   "crm_feegow_find_patient": { tokens: 102, motivo: FEEGOW },
   "crm_feegow_find_patient_by_phone": { tokens: 105, motivo: "ferramenta nova: reconhece o paciente pelo celular da própria conversa, sem argumento (2026-11-18)" },
   "crm_feegow_list_patient_appointments": { tokens: 99, motivo: FEEGOW },
@@ -171,7 +171,8 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
 // `crm_feegow_find_patient_by_phone` (2026-11-18), também só com `agendar`.
 // +265 com o CPF digitado e a confirmação em duas chamadas nas três escritas do
 // Feegow (2026-11-18, depois de o agente marcar sozinho com o CPF de outra pessoa).
-const TETO_TOTAL = 33434;
+// +77 com a especialidade pelo nome nas duas buscas de horário (2026-11-18).
+const TETO_TOTAL = 33511;
 
 const VARIANTE = "schedule_followup (com negócio)";
 

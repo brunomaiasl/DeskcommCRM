@@ -88,7 +88,13 @@ function simularFeegow(rota: Rota) {
         token: headers["x-access-token"] ?? null,
       };
       chamadas.push(c);
-      const r = rota(c) ?? { status: 404, body: { success: false, content: "rota não simulada" } };
+      // A lista de especialidades sempre existe (a busca confere a especialidade
+      // antes de procurar horário); quem quiser outra lista responde na própria rota.
+      const r =
+        rota(c) ??
+        (c.path === "specialties/list"
+          ? ok([{ especialidade_id: 95, nome: "Dermatologia", consulta_id: 740 }])
+          : { status: 404, body: { success: false, content: "rota não simulada" } });
       return new Response(JSON.stringify(r.body), { status: r.status ?? 200 });
     }),
   );
@@ -634,6 +640,45 @@ describe("crm_feegow_next_available", () => {
       mensagem: string;
     };
     expect(r.mensagem).toBe("Paciente não encontrado");
+  });
+});
+
+describe("especialidade pelo NOME nas buscas (o id inventado de 18/11)", () => {
+  const agenda: Rota = (c) => {
+    if (c.path === "specialties/list") {
+      return ok([
+        { especialidade_id: 227, nome: "Clínica Geral", consulta_id: 2151 },
+        { especialidade_id: 296, nome: "ODONTOLOGIA ( CLINICO GERAL)", consulta_id: 2151 },
+      ]);
+    }
+    if (c.path === "appoints/available-schedule") {
+      return ok({ profissional_id: { "7": { local_id: { "3": { [DIA]: ["09:00:00"] } } } } });
+    }
+    if (c.path === "professional/list") return PROFISSIONAIS;
+    if (c.path.startsWith("company/")) return { status: 500, body: { success: false } };
+    return undefined;
+  };
+
+  it("'clínico geral' pelo nome acha a 227 e devolve horários com a especialidade resolvida", async () => {
+    simularFeegow(agenda);
+    const r = (await executar(crmFeegowNextAvailable, { especialidade: "clínico geral", quantidade: 1, a_partir_de: DIA })) as {
+      encontrou: boolean;
+      especialidade: { especialidade_id: number };
+    };
+    expect(r.encontrou).toBe(true);
+    expect(r.especialidade.especialidade_id).toBe(227);
+    const busca = chamadas.find((c) => c.path === "appoints/available-schedule");
+    expect(busca?.query.get("especialidade_id")).toBe("227");
+  });
+
+  it("id inventado (30) é RECUSADO — nunca vira 'sem horário' (que fazia o agente transferir)", async () => {
+    simularFeegow(agenda);
+    const r = (await executar(crmFeegowNextAvailable, { especialidade_id: 30, quantidade: 3 })) as { ok: boolean; motivo: string; mensagem: string };
+    expect(r).toMatchObject({ ok: false, motivo: "ids_invalidos" });
+    expect(r.mensagem).toContain("NOME");
+    expect(chamadas.some((c) => c.path === "appoints/available-schedule")).toBe(false);
+    const r2 = await executar(crmFeegowAvailableSlots, { especialidade_id: 30, data_inicio: DIA });
+    expect(r2).toMatchObject({ ok: false, motivo: "ids_invalidos" });
   });
 });
 

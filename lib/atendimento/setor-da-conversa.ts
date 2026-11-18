@@ -54,6 +54,8 @@ import { logger } from "@/lib/logger";
 
 /** A chave da marca de origem dentro de `conversations.metadata`. */
 export const CHAVE_DA_ORIGEM_DO_SETOR = "setor_origem";
+/** Quando a marca foi gravada (ISO). A escolha manual vale só NO ATENDIMENTO em que foi feita. */
+export const CHAVE_DA_HORA_DO_SETOR = "setor_origem_em";
 
 /** Quem escolheu a fila. `manual` é gente; os outros dois não têm sessão. */
 export type OrigemDoSetor = "manual" | "ia" | "automacao";
@@ -135,6 +137,7 @@ interface ConversaDoSetor {
   assigned_to_user_id: string | null;
   sector_id: string | null;
   metadata: unknown;
+  service_started_at?: string | null;
 }
 
 /**
@@ -162,14 +165,43 @@ export function origemGravada(conversa: {
  * IA/automação) ou quando quem chama pediu a sobrescrita explicitamente.
  */
 export function podeSobrescreverSetorManual(
-  conversa: { sector_id: string | null; metadata: unknown },
+  conversa: { sector_id: string | null; metadata: unknown; service_started_at?: string | null },
   origem: OrigemDoSetor,
   sobrescreverSetorManual: boolean,
 ): boolean {
   if (origem === "manual") return true;
   if (sobrescreverSetorManual) return true;
   if (!conversa.sector_id) return true;
-  return origemGravada(conversa) !== "manual";
+  if (origemGravada(conversa) !== "manual") return true;
+  // A escolha manual vale para o ATENDIMENTO em que foi feita (pedido de 18/11):
+  // a fila que alguém escolheu às 09h num atendimento já encerrado prendia o
+  // paciente que voltou às 15h em "Agendamento - Exames", e a IA não conseguia
+  // pô-lo em "Agendamento - consultas". Sem a hora (marca antiga), preserva.
+  const quando = horaDaEscolhaManual(conversa);
+  const inicio = conversa.service_started_at ? new Date(conversa.service_started_at).getTime() : NaN;
+  if (quando !== null && Number.isFinite(inicio) && quando < inicio) return true;
+  return false;
+}
+
+/**
+ * Quando a pessoa escolheu a fila: a hora gravada junto da marca; para marca
+ * antiga sem hora, a última transferência para ESTE setor no histórico da
+ * conversa (`metadata.transferencias`). `null` = não dá para saber.
+ */
+export function horaDaEscolhaManual(conversa: { sector_id: string | null; metadata: unknown }): number | null {
+  const metadata =
+    conversa.metadata && typeof conversa.metadata === "object" ? (conversa.metadata as Record<string, unknown>) : {};
+  const gravada = metadata[CHAVE_DA_HORA_DO_SETOR];
+  if (typeof gravada === "string" && Number.isFinite(new Date(gravada).getTime())) return new Date(gravada).getTime();
+  const transferencias = Array.isArray(metadata.transferencias) ? metadata.transferencias : [];
+  let ultima: number | null = null;
+  for (const item of transferencias) {
+    const tr = item as { para_fila_id?: unknown; em?: unknown };
+    if (tr.para_fila_id !== conversa.sector_id || typeof tr.em !== "string") continue;
+    const t = new Date(tr.em).getTime();
+    if (Number.isFinite(t) && (ultima === null || t > ultima)) ultima = t;
+  }
+  return ultima;
 }
 
 /**
@@ -217,7 +249,7 @@ export async function definirSetorDaConversa(entrada: EntradaDoSetor): Promise<R
   // Com o cliente de serviço isto é a única barreira — a RLS não está no caminho.
   const { data: conversaCrua, error: erroConversa } = await db
     .from("conversations")
-    .select("id, status, assigned_to_user_id, sector_id, metadata")
+    .select("id, status, assigned_to_user_id, sector_id, metadata, service_started_at")
     .eq("id", conversationId)
     .eq("organization_id", organizationId)
     .maybeSingle();
@@ -312,7 +344,10 @@ export async function definirSetorDaConversa(entrada: EntradaDoSetor): Promise<R
       : {};
   const { data: atualizada, error: erroUpdate } = await db
     .from("conversations")
-    .update({ sector_id: sectorId, metadata: { ...metadata, [CHAVE_DA_ORIGEM_DO_SETOR]: origem } })
+    .update({
+      sector_id: sectorId,
+      metadata: { ...metadata, [CHAVE_DA_ORIGEM_DO_SETOR]: origem, [CHAVE_DA_HORA_DO_SETOR]: new Date().toISOString() },
+    })
     .eq("id", conversationId)
     .eq("organization_id", organizationId)
     .select("id, sector_id, assigned_to_user_id, status")

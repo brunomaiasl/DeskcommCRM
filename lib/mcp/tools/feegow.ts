@@ -345,8 +345,51 @@ const unidadeDoPaciente = idFeegow
     "Só se o paciente escolheu uma unidade (unidade_id de crm_feegow_list_units). Omitir = todas as unidades.",
   );
 
+/**
+ * A especialidade pelo NOME (pedido de 18/11): o modelo pulava
+ * crm_feegow_list_specialties e mandava um id inventado (30), a busca voltava
+ * vazia e ele dizia "sem horário" e transferia. Com o nome, quem resolve o id é
+ * o servidor; id que não existe é recusado e manda usar o nome.
+ */
+const especialidadePeloNome = z
+  .string()
+  .trim()
+  .min(2)
+  .max(80)
+  .optional()
+  .describe('Como o paciente pediu (ex.: "clínico geral"). Preferível ao id: o sistema acha a especialidade.');
+
+type Resolvida = { ok: true; especialidade_id: number; nome: string };
+
+async function resolverEspecialidade(input: { especialidade?: string; especialidade_id?: number }): Promise<Resolvida | Recusa> {
+  if (input.especialidade) {
+    const achadas = await listarEspecialidades(input.especialidade);
+    if (achadas.length === 1) return { ok: true, especialidade_id: achadas[0]!.especialidade_id, nome: achadas[0]!.nome };
+    if (achadas.length > 1) {
+      return recusa(
+        "especialidade_ambigua",
+        `Mais de uma especialidade casa com "${input.especialidade}": ${achadas.map((e) => e.nome).join(", ")}. Pergunte ao paciente qual delas e busque de novo com o nome exato.`,
+      );
+    }
+    return recusa(
+      "especialidade_nao_encontrada",
+      `Nenhuma especialidade da clínica casa com "${input.especialidade}". Liste com crm_feegow_list_specialties (sem termo) e procure a mais parecida.`,
+    );
+  }
+  if (input.especialidade_id !== undefined) {
+    const esp = await obterEspecialidade(input.especialidade_id);
+    if (esp) return { ok: true, especialidade_id: esp.especialidade_id, nome: esp.nome };
+    return recusa(
+      "ids_invalidos",
+      `A especialidade ${input.especialidade_id} não existe. Busque de novo passando o NOME em "especialidade" (ex.: "clínico geral"). Não diga ao paciente que não há horário e não transfira por isso.`,
+    );
+  }
+  return recusa("especialidade_obrigatoria", 'Informe a especialidade pelo nome em "especialidade" (ex.: "clínico geral").');
+}
+
 const proximoShape = {
-  especialidade_id: idFeegow.describe("Especialidade pedida (de crm_feegow_list_specialties)."),
+  especialidade: especialidadePeloNome,
+  especialidade_id: idFeegow.optional().describe("Só se já tiver o id certo; senão use o nome."),
   profissional_id: idFeegow
     .optional()
     .describe("Só quando o paciente pediu um profissional específico."),
@@ -370,8 +413,10 @@ export const crmFeegowNextAvailable: McpToolDefinition<typeof proximoShape> = {
   requiresScope: "mcp:read",
   handler: async (input, ctx) =>
     comFeegow("crm_feegow_next_available", ctx, async () => {
+      const esp = await resolverEspecialidade(input);
+      if (!esp.ok) return esp;
       const { horarios, buscou_ate } = await primeirosHorarios({
-        especialidade_id: input.especialidade_id,
+        especialidade_id: esp.especialidade_id,
         profissional_id: input.profissional_id,
         unidade_id: input.unidade_id,
         convenio_id: input.convenio_id,
@@ -386,11 +431,12 @@ export const crmFeegowNextAvailable: McpToolDefinition<typeof proximoShape> = {
             `se não, não invente vaga.${COMO_PASSAR_PARA_PESSOA}`,
         };
       }
-      const nomes = await nomesDosProfissionais(input.especialidade_id);
+      const nomes = await nomesDosProfissionais(esp.especialidade_id);
       const unidades = await unidadesPorLocalOuVazio();
       return {
         ok: true,
         encontrou: true,
+        especialidade: { especialidade_id: esp.especialidade_id, nome: esp.nome },
         mais_proximos: horarios.slice(0, input.quantidade).map((h) => descreverHorario(h, nomes, unidades)),
         primeiro_de_cada_profissional: primeiroDeCadaProfissional(horarios)
           .slice(0, 5)
@@ -405,7 +451,8 @@ const MAX_HORARIOS_DEVOLVIDOS = 40;
 const MAX_PERIODO_DIAS = 31;
 
 const horariosShape = {
-  especialidade_id: idFeegow.describe("Especialidade (de crm_feegow_list_specialties)."),
+  especialidade: especialidadePeloNome,
+  especialidade_id: idFeegow.optional().describe("Só se já tiver o id certo; senão use o nome."),
   profissional_id: idFeegow.optional(),
   unidade_id: unidadeDoPaciente,
   convenio_id: idFeegow.optional(),
@@ -432,8 +479,10 @@ export const crmFeegowAvailableSlots: McpToolDefinition<typeof horariosShape> = 
       return recusa("periodo_longo", `Consulte no máximo ${MAX_PERIODO_DIAS} dias por vez.`);
     }
     return comFeegow("crm_feegow_available_slots", ctx, async () => {
+      const esp = await resolverEspecialidade(input);
+      if (!esp.ok) return esp;
       const horarios = await buscarHorarios({
-        especialidade_id: input.especialidade_id,
+        especialidade_id: esp.especialidade_id,
         profissional_id: input.profissional_id,
         unidade_id: input.unidade_id,
         convenio_id: input.convenio_id,
@@ -441,9 +490,9 @@ export const crmFeegowAvailableSlots: McpToolDefinition<typeof horariosShape> = 
         ate: fim,
       });
       if (horarios.length === 0) {
-        return { ok: true, encontrou: false, mensagem: "Nenhum horário livre nesse período." };
+        return { ok: true, encontrou: false, especialidade: { especialidade_id: esp.especialidade_id, nome: esp.nome }, mensagem: "Nenhum horário livre nesse período." };
       }
-      const nomes = await nomesDosProfissionais(input.especialidade_id);
+      const nomes = await nomesDosProfissionais(esp.especialidade_id);
       const unidades = await unidadesPorLocalOuVazio();
       // Por período (pedido de 18/11): numa agenda cheia os 40 primeiros são todos
       // da manhã do 1º dia e a tarde sumia. Os 5 mais próximos de cada período vêm
@@ -456,6 +505,7 @@ export const crmFeegowAvailableSlots: McpToolDefinition<typeof horariosShape> = 
       return {
         ok: true,
         encontrou: true,
+        especialidade: { especialidade_id: esp.especialidade_id, nome: esp.nome },
         total: horarios.length,
         manha: porPeriodo(true),
         tarde: porPeriodo(false),

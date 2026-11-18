@@ -437,6 +437,29 @@ describe("a precedência, como função pura", () => {
     ).toBe(true);
     expect(podeSobrescreverSetorManual({ sector_id: null, metadata: {} }, "ia", false)).toBe(true);
   });
+
+  it("a escolha manual vale só NO ATENDIMENTO em que foi feita (o caso de 18/11)", () => {
+    // 09:16 alguém pôs a conversa em "Agendamento - Exames"; às 15:07 o paciente
+    // voltou num atendimento NOVO e a IA não conseguia pô-lo em consultas.
+    const deAntes = {
+      sector_id: SETOR_ANTIGO,
+      service_started_at: "2026-11-18T18:07:00Z",
+      metadata: { [CHAVE_DA_ORIGEM_DO_SETOR]: "manual", setor_origem_em: "2026-11-18T12:16:00Z" },
+    };
+    expect(podeSobrescreverSetorManual(deAntes, "ia", false)).toBe(true);
+    // No MESMO atendimento continua preservada.
+    const desteAtendimento = { ...deAntes, metadata: { ...deAntes.metadata, setor_origem_em: "2026-11-18T18:08:00Z" } };
+    expect(podeSobrescreverSetorManual(desteAtendimento, "ia", false)).toBe(false);
+    // Marca antiga sem hora: a transferência para este setor no histórico decide.
+    const pelaTransferencia = {
+      sector_id: SETOR_ANTIGO,
+      service_started_at: "2026-11-18T18:07:00Z",
+      metadata: { [CHAVE_DA_ORIGEM_DO_SETOR]: "manual", transferencias: [{ em: "2026-11-18T12:16:18Z", para_fila_id: SETOR_ANTIGO }] },
+    };
+    expect(podeSobrescreverSetorManual(pelaTransferencia, "ia", false)).toBe(true);
+    // Sem hora nenhuma: preserva (errar para o lado de não apagar a escolha de alguém).
+    expect(podeSobrescreverSetorManual({ ...pelaTransferencia, metadata: { [CHAVE_DA_ORIGEM_DO_SETOR]: "manual" } }, "ia", false)).toBe(false);
+  });
 });
 
 describe("GREEN na borda: o caminho existe e está registrado", () => {
