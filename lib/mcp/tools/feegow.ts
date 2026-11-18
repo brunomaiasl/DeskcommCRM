@@ -445,10 +445,20 @@ export const crmFeegowAvailableSlots: McpToolDefinition<typeof horariosShape> = 
       }
       const nomes = await nomesDosProfissionais(input.especialidade_id);
       const unidades = await unidadesPorLocalOuVazio();
+      // Por período (pedido de 18/11): numa agenda cheia os 40 primeiros são todos
+      // da manhã do 1º dia e a tarde sumia. Os 5 mais próximos de cada período vêm
+      // à parte, já prontos para a lista "Manhã / Tarde".
+      const porPeriodo = (manha: boolean) =>
+        horarios
+          .filter((h) => (h.hora < "12:00") === manha)
+          .slice(0, 5)
+          .map((h) => descreverHorario(h, nomes, unidades));
       return {
         ok: true,
         encontrou: true,
         total: horarios.length,
+        manha: porPeriodo(true),
+        tarde: porPeriodo(false),
         horarios: horarios.slice(0, MAX_HORARIOS_DEVOLVIDOS).map((h) => descreverHorario(h, nomes, unidades)),
         ...(horarios.length > MAX_HORARIOS_DEVOLVIDOS
           ? { aviso: `mostrando os ${MAX_HORARIOS_DEVOLVIDOS} primeiros; restrinja o período ou o profissional` }

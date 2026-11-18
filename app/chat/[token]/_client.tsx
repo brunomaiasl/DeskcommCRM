@@ -33,6 +33,14 @@ type Estado =
 
 const INTERVALO_MS = 3000;
 const MAX = 2000;
+/**
+ * "Digitando…" (pedido de 18/11): o paciente abre o link logo depois do "Olá" e a
+ * primeira resposta leva alguns segundos (espera de rajada + o agente pensar).
+ * Página vazia nesse meio parecia que ninguém ia responder. Enquanto a última
+ * mensagem é DELE (ou a página acabou de abrir vazia) e faz menos que isto, a
+ * página mostra que a resposta está a caminho.
+ */
+const ESPERA_DA_RESPOSTA_MS = 120_000;
 
 function hora(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -52,6 +60,8 @@ export function ChatDoPaciente({ token }: { token: string }) {
   const [enviando, setEnviando] = useState(false);
   const ultimaRef = useRef<string | null>(null);
   const fimRef = useRef<HTMLDivElement | null>(null);
+  const [abertoEm] = useState(() => Date.now());
+  const [agora, setAgora] = useState(() => Date.now());
 
   const buscar = useCallback(async () => {
     const qs = ultimaRef.current ? `?depois=${encodeURIComponent(ultimaRef.current)}` : "";
@@ -82,6 +92,7 @@ export function ChatDoPaciente({ token }: { token: string }) {
     // acontece no retorno da rede, nunca no corpo do efeito.
     const primeira = setTimeout(() => void buscar(), 0);
     const t = setInterval(() => {
+      setAgora(Date.now());
       // Aba escondida não conta como "na página": o aviso pelo WhatsApp deve sair.
       if (document.visibilityState === "visible") void buscar();
     }, INTERVALO_MS);
@@ -161,6 +172,20 @@ export function ChatDoPaciente({ token }: { token: string }) {
     );
   }
 
+  const ultima = mensagens[mensagens.length - 1];
+  const esperandoResposta = ultima
+    ? ultima.de === "paciente" && !ultima.falhou && agora - new Date(ultima.em).getTime() < ESPERA_DA_RESPOSTA_MS
+    : agora - abertoEm < ESPERA_DA_RESPOSTA_MS;
+  const digitando = (
+    <div className="flex justify-start" role="status" aria-label={t("Digitando…")} data-testid="webchat-digitando">
+      <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm bg-muted px-3 py-3 shadow-sm">
+        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+        <span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
+      </div>
+    </div>
+  );
+
   return (
     <main className="flex h-dvh flex-col bg-background text-foreground">
       <header className="flex items-center gap-3 border-b border-border px-4 py-3">
@@ -175,9 +200,18 @@ export function ChatDoPaciente({ token }: { token: string }) {
 
       <section className="flex-1 overflow-y-auto px-3 py-4" aria-live="polite">
         {mensagens.length === 0 ? (
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            {t("Escreva sua mensagem abaixo. A gente responde por aqui.")}
-          </p>
+          esperandoResposta ? (
+            <div className="flex flex-col gap-3">
+              <p className="mt-4 text-center text-sm text-muted-foreground">
+                {t("Já recebemos sua mensagem. A resposta chega aqui em instantes.")}
+              </p>
+              {digitando}
+            </div>
+          ) : (
+            <p className="mt-8 text-center text-sm text-muted-foreground">
+              {t("Escreva sua mensagem abaixo. A gente responde por aqui.")}
+            </p>
+          )
         ) : (
           <ul className="flex flex-col gap-2">
             {mensagens.map((m) => (
@@ -216,6 +250,7 @@ export function ChatDoPaciente({ token }: { token: string }) {
             ))}
           </ul>
         )}
+        {mensagens.length > 0 && esperandoResposta ? <div className="mt-2">{digitando}</div> : null}
         <div ref={fimRef} />
       </section>
 

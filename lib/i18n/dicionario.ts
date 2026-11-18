@@ -792,6 +792,8 @@ export const DICIONARIO: Traducoes = {
     es: "Verifique que el enlace esté completo, o envíe un mensaje por WhatsApp para recibir uno nuevo.",
   },
   "Conversa segura · o link vale por 24 horas": { es: "Conversación segura · el enlace vale por 24 horas" },
+  "Digitando…": { es: "Escribiendo…" },
+  "Já recebemos sua mensagem. A resposta chega aqui em instantes.": { es: "Ya recibimos tu mensaje. La respuesta llega aquí en unos instantes." },
   "Escreva sua mensagem abaixo. A gente responde por aqui.": {
     es: "Escriba su mensaje abajo. Le respondemos por aquí.",
   },

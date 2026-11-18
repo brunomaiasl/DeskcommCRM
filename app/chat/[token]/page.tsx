@@ -18,6 +18,10 @@ const BASE: Metadata = {
   title: "Conversa",
   robots: { index: false, follow: false },
   referrer: "no-referrer",
+  // O celular sublinhava (e transformava em link de mapa) só o 1º endereço das
+  // unidades na mensagem do agente (pedido de 18/11). Endereço, telefone e e-mail
+  // no texto da conversa são só texto.
+  formatDetection: { telephone: false, address: false, email: false },
 };
 
 /**

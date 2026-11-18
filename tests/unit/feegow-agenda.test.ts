@@ -38,6 +38,7 @@ import { escritaCabeNoTurno } from "@/lib/ai/runtime/escopo-das-escritas";
 import { feegowGet, FeegowError } from "@/lib/feegow/client";
 import { agoraEmSaoPaulo, isoParaBR, paraIso, somarDias } from "@/lib/feegow/datas";
 import {
+  crmFeegowAvailableSlots,
   crmFeegowBookAppointment,
   crmFeegowCancelAppointment,
   crmFeegowCreatePatient,
@@ -633,6 +634,29 @@ describe("crm_feegow_next_available", () => {
       mensagem: string;
     };
     expect(r.mensagem).toBe("Paciente não encontrado");
+  });
+});
+
+describe("crm_feegow_available_slots — manhã e tarde (pedido de 18/11)", () => {
+  it("os 5 mais próximos de cada período vêm à parte, mesmo com a manhã lotada", async () => {
+    const manha = Array.from({ length: 45 }, (_, i) => `${String(7 + Math.floor(i / 10)).padStart(2, "0")}:${String((i % 10) * 5).padStart(2, "0")}:00`);
+    simularFeegow((c) => {
+      if (c.path === "appoints/available-schedule") {
+        return ok({ profissional_id: { "7": { local_id: { "3": { [DIA]: [...manha, "14:00:00", "15:30:00"] } } } } });
+      }
+      if (c.path === "professional/list") return PROFISSIONAIS;
+      if (c.path.startsWith("company/")) return { status: 500, body: { success: false } };
+      return undefined;
+    });
+    const r = (await executar(crmFeegowAvailableSlots, { especialidade_id: 95, data_inicio: DIA })) as {
+      manha: Array<{ hora: string }>;
+      tarde: Array<{ hora: string }>;
+      horarios: Array<{ hora: string }>;
+    };
+    expect(r.manha.map((h) => h.hora)).toEqual(["07:00", "07:05", "07:10", "07:15", "07:20"]);
+    expect(r.tarde.map((h) => h.hora)).toEqual(["14:00", "15:30"]);
+    // Os 40 primeiros sozinhos não teriam tarde nenhuma — é o defeito que isto conserta.
+    expect(r.horarios.some((h) => h.hora >= "12:00")).toBe(false);
   });
 });
 
