@@ -73,9 +73,9 @@ export async function registrarPresenca(admin: SupabaseClient, link: LinhaDoLink
 }
 
 export async function cabecalho(admin: SupabaseClient, link: LinhaDoLink): Promise<CabecalhoDaPagina> {
-  const { data } = await admin.from("organizations").select("name").eq("id", link.organization_id).maybeSingle();
+  const { data } = await admin.from("organizations").select("display_name").eq("id", link.organization_id).maybeSingle();
   return {
-    nomeDaClinica: (data as { name: string | null } | null)?.name?.trim() || "Atendimento",
+    nomeDaClinica: (data as { display_name: string | null } | null)?.display_name?.trim() || "Atendimento",
     expiraEm: link.expires_at,
   };
 }

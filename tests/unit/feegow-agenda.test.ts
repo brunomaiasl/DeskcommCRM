@@ -25,6 +25,7 @@ vi.mock("@/lib/instalacao/config", () => ({
 
 import { esquecerFeegowConfig } from "@/lib/feegow/config";
 import {
+  escolherConsultaDaEspecialidade,
   filtrarEspecialidades,
   variantesDoTelefone,
   limparCacheDoFeegow,
@@ -168,6 +169,40 @@ describe("filtrarEspecialidades", () => {
   it("sem termo devolve todas; termo sem par devolve vazio", () => {
     expect(filtrarEspecialidades(ESP).length).toBe(ESP.length);
     expect(ids("astronauta")).toEqual([]);
+  });
+});
+
+// ─── a consulta da especialidade, pelo nome ─────────────────────────────────
+
+describe("escolherConsultaDaEspecialidade", () => {
+  // Nomes e ids REAIS do Feegow da Med Anchieta (18/11/2026).
+  const PROCS = [
+    { procedimento_id: 2151, nome: "TESTE IMPLANTAÇÃO", valor: 0 },
+    { procedimento_id: 11, nome: "CONSULTA - CLÍNICO GERAL", valor: 15000 },
+    { procedimento_id: 16, nome: "CONSULTA OFTALMOLOGISTA", valor: 19000 },
+    { procedimento_id: 1873, nome: "CONSULTA - OFTALMOLOGISTA (OFTCAMP)", valor: 20160 },
+    { procedimento_id: 17, nome: "CONSULTA - ORTOPEDISTA", valor: 19000 },
+    { procedimento_id: 20, nome: "CONSULTA - PEDIATRA", valor: 19000 },
+    { procedimento_id: 1941, nome: "CONSULTA - CIRURGIA GERAL", valor: 19000 },
+    { procedimento_id: 1777, nome: "US ABDOME TOTAL", valor: 12000 },
+    { procedimento_id: 500, nome: "CONSULTA RETORNO CLÍNICO GERAL", valor: 0 },
+  ];
+  const id = (esp: string) => escolherConsultaDaEspecialidade(esp, PROCS)?.procedimento_id ?? null;
+
+  it("acha a consulta de verdade quando a padrão é 'TESTE IMPLANTAÇÃO' (o caso da Clínica Geral)", () => {
+    expect(id("Clínica Geral")).toBe(11);
+  });
+
+  it("especialidade → consulta pelo radical, sem confundir as que dividem 'geral'", () => {
+    expect(id("Oftalmologia")).toBe(16); // o nome mais curto, não o "(OFTCAMP)"
+    expect(id("Ortopedia e Traumatologia")).toBe(17);
+    expect(id("Pediatria Geral")).toBe(20);
+    expect(id("Cirurgia Geral")).toBe(1941);
+  });
+
+  it("nunca escolhe teste, retorno nem exame; sem par devolve null", () => {
+    expect(id("Radiologia e Diagnóstico por Imagem")).toBeNull();
+    expect(PROCS.filter((p) => [2151, 500, 1777].includes(p.procedimento_id)).map((p) => p.procedimento_id)).not.toContain(id("Clínica Geral"));
   });
 });
 
@@ -640,6 +675,25 @@ describe("crm_feegow_book_appointment", () => {
     const r = (await executar(crmFeegowBookAppointment, pedido)) as { ok: boolean; motivo: string };
     expect(r).toMatchObject({ ok: false, motivo: "procedimento_invalido" });
     expect(chamadas.some((c) => c.path === "appoints/new-appoint")).toBe(false);
+  });
+
+  it("consulta padrão 'TESTE' mas a consulta de verdade existe: MARCA com ela (o caso de 18/11)", async () => {
+    simularFeegow((c) => {
+      if (c.path === "procedures/list") {
+        const id = c.query.get("procedimento_id");
+        if (id === "740") return ok([{ procedimento_id: 740, nome: "TESTE IMPLANTAÇÃO", valor: 0 }]);
+        if (id === "13") return ok([{ procedimento_id: 13, nome: "CONSULTA - DERMATOLOGISTA", valor: 19000 }]);
+        return ok([
+          { procedimento_id: 740, nome: "TESTE IMPLANTAÇÃO", valor: 0 },
+          { procedimento_id: 13, nome: "CONSULTA - DERMATOLOGISTA", valor: 19000 },
+        ]);
+      }
+      return agendaCom(["09:00:00"])(c);
+    });
+    const r = await executar(crmFeegowBookAppointment, pedido);
+    expect(r).toMatchObject({ ok: true, agendamento_id: 43 });
+    const post = chamadas.find((c) => c.path === "appoints/new-appoint");
+    expect(post?.body).toMatchObject({ procedimento_id: 13, valor: 19000 });
   });
 
   it("horário que deixou de estar livre: recusa com alternativas e NÃO marca", async () => {

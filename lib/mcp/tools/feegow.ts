@@ -31,6 +31,7 @@ import {
   buscarPacientePorCpf,
   buscarPacientesPorTelefone,
   cancelarAgendamento,
+  consultaDaEspecialidade,
   ehTabelaDoCartao,
   nomesDasTabelas,
   criarAgendamento,
@@ -576,17 +577,26 @@ export const crmFeegowBookAppointment: McpToolDefinition<typeof agendarShape> = 
         };
       }
 
-      // 2. procedimento: o informado ou a consulta padrão da especialidade.
+      // 2. procedimento: o informado ou a consulta da especialidade — a padrão do
+      // Feegow quando ela é consulta de verdade, senão a achada pelo NOME (em 18/11
+      // a padrão da Clínica Geral era "TESTE IMPLANTAÇÃO" e nada era marcado).
       let procedimento_id = input.procedimento_id;
       if (procedimento_id === undefined) {
         const esp = await obterEspecialidade(input.especialidade_id);
-        if (!esp?.consulta_id) {
-          return recusa(
-            "procedimento_nao_definido",
-            `A especialidade não tem consulta padrão no Feegow, então a consulta precisa ser marcada por uma pessoa.${COMO_PASSAR_PARA_PESSOA}`,
-          );
+        const consulta = esp ? await consultaDaEspecialidade(esp) : null;
+        if (!consulta) {
+          return esp?.consulta_id
+            ? recusa(
+                "procedimento_invalido",
+                "O procedimento desta consulta está cadastrado de forma errada no Feegow, então a consulta não foi " +
+                  `marcada. Diga ao paciente que a equipe vai concluir o agendamento.${COMO_PASSAR_PARA_PESSOA}`,
+              )
+            : recusa(
+                "procedimento_nao_definido",
+                `A especialidade não tem consulta padrão no Feegow, então a consulta precisa ser marcada por uma pessoa.${COMO_PASSAR_PARA_PESSOA}`,
+              );
         }
-        procedimento_id = esp.consulta_id;
+        procedimento_id = consulta.procedimento_id;
       }
 
       // 2b. O procedimento é consulta de verdade? A "consulta padrão" de uma

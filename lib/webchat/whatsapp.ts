@@ -81,7 +81,7 @@ export async function enviarLinkPeloWhatsapp(
 ): Promise<DesfechoDoEnvio> {
   const { data: conv } = await admin
     .from("conversations")
-    .select("id, channel_session_id, last_inbound_at, channel_sessions:channel_session_id(provider), organizations:organization_id(name)")
+    .select("id, channel_session_id, last_inbound_at, channel_sessions:channel_session_id(provider), organizations:organization_id(display_name)")
     .eq("organization_id", args.organizationId)
     .eq("id", args.conversationId)
     .maybeSingle();
@@ -90,7 +90,7 @@ export async function enviarLinkPeloWhatsapp(
     channel_session_id: string;
     last_inbound_at: string | null;
     channel_sessions: { provider: string | null } | null;
-    organizations: { name: string | null } | null;
+    organizations: { display_name: string | null } | null;
   };
 
   const janela = estadoDaJanela(c.channel_sessions?.provider ?? null, c.last_inbound_at, new Date());
@@ -125,7 +125,7 @@ export async function enviarLinkPeloWhatsapp(
       nome: args.modelo.nome,
       idioma: args.modelo.idioma,
       token: args.token,
-      nomeDaOrganizacao: c.organizations?.name ?? "",
+      nomeDaOrganizacao: c.organizations?.display_name ?? "",
     });
     const input = sendMessageSchema.parse({
       conversation_id: args.conversationId,

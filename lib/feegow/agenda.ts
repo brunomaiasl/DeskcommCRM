@@ -527,6 +527,88 @@ export async function nomeDoProcedimento(procedimento_id: number): Promise<strin
   return typeof nome === "string" ? nome : null;
 }
 
+/** O mínimo de um procedimento para escolher a consulta de uma especialidade. */
+export interface ProcedimentoResumo {
+  procedimento_id: number;
+  nome: string;
+  valor: number | null;
+}
+
+/** Todos os procedimentos da clínica (1.850 na Med Anchieta, 18/11), com cache curto. */
+async function todosOsProcedimentos(): Promise<ProcedimentoResumo[]> {
+  return comCache("procedimentos", async () => {
+    const bruto = await feegowGet<unknown>("procedures/list", {});
+    return (Array.isArray(bruto) ? bruto : [])
+      .map((p) => {
+        const r = p as Record<string, unknown>;
+        const id = num(r.procedimento_id);
+        return id === null ? null : { procedimento_id: id, nome: String(r.nome ?? ""), valor: num(r.valor) };
+      })
+      .filter((p): p is ProcedimentoResumo => p !== null);
+  });
+}
+
+/**
+ * A consulta de uma especialidade PELO NOME, quando a "consulta padrão" do
+ * Feegow está errada. Medido em 18/11: a da Clínica Geral (227) aponta para
+ * "TESTE IMPLANTAÇÃO" (2151), e a consulta de verdade é a 11, "CONSULTA -
+ * CLÍNICO GERAL". Pura, para o teste medir com os nomes reais.
+ *
+ * Casa pelo radical (6 letras): "Clínica Geral" acha "CLÍNICO GERAL",
+ * "Oftalmologia" acha "OFTALMOLOGISTA". A primeira palavra da especialidade vale
+ * dobrado e é obrigatória — senão "Pediatria Geral" empatava com "Clínico Geral"
+ * pelo "geral". Empate: com valor primeiro, depois o nome mais curto (o
+ * "CONSULTA OFTALMOLOGISTA" antes do "... (OFTCAMP)").
+ */
+export function escolherConsultaDaEspecialidade(
+  nomeDaEspecialidade: string,
+  procedimentos: readonly ProcedimentoResumo[],
+): ProcedimentoResumo | null {
+  const radicais = normalizar(nomeDaEspecialidade)
+    .split(/[^a-z0-9]+/)
+    .filter((p) => p.length > 2)
+    .map((p) => p.slice(0, 6));
+  if (radicais.length === 0) return null;
+  const especialidadeOdonto = /odonto|dent/.test(normalizar(nomeDaEspecialidade));
+  let melhor: { p: ProcedimentoResumo; nota: number } | null = null;
+  for (const p of procedimentos) {
+    const nome = normalizar(p.nome);
+    if (!/\bconsulta\b/.test(nome) || procedimentoSuspeito(p.nome) || /retorno/.test(nome)) continue;
+    if (/odonto|dent/.test(nome) !== especialidadeOdonto) continue;
+    const palavras = nome.split(/[^a-z0-9]+/).filter(Boolean);
+    const casa = (r: string) => palavras.some((w) => w.startsWith(r));
+    if (!casa(radicais[0]!)) continue;
+    const nota = radicais.reduce((soma, r, i) => soma + (casa(r) ? (i === 0 ? 2 : 1) : 0), 0);
+    const ganha =
+      melhor === null ||
+      nota > melhor.nota ||
+      (nota === melhor.nota &&
+        ((p.valor ?? 0) > 0) !== ((melhor.p.valor ?? 0) > 0) &&
+        (p.valor ?? 0) > 0) ||
+      (nota === melhor.nota &&
+        ((p.valor ?? 0) > 0) === ((melhor.p.valor ?? 0) > 0) &&
+        p.nome.length < melhor.p.nome.length);
+    if (ganha) melhor = { p, nota };
+  }
+  return melhor?.p ?? null;
+}
+
+/**
+ * A consulta a marcar para a especialidade: a "consulta padrão" do Feegow quando
+ * ela é consulta de verdade; senão, a achada pelo nome. `null` = não há.
+ */
+export async function consultaDaEspecialidade(
+  esp: Especialidade,
+): Promise<{ procedimento_id: number; nome: string } | null> {
+  if (esp.consulta_id !== null) {
+    // Nome desconhecido (null) não é suspeito: só a padrão COMPROVADAMENTE errada é trocada.
+    const nome = await nomeDoProcedimento(esp.consulta_id);
+    if (!procedimentoSuspeito(nome)) return { procedimento_id: esp.consulta_id, nome: nome ?? "" };
+  }
+  const achada = escolherConsultaDaEspecialidade(esp.nome, await todosOsProcedimentos());
+  return achada ? { procedimento_id: achada.procedimento_id, nome: achada.nome } : null;
+}
+
 /**
  * Procedimento que NÃO é consulta de verdade e não pode ir para a agenda do
  * paciente. Medido no Feegow da clínica (16/11/2026): a "consulta padrão" de
