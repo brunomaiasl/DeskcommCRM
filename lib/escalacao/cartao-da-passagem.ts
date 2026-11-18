@@ -52,7 +52,36 @@ import {
   type OrigemDaPassagem,
   type TentativaDaPassagem,
 } from "./passagem";
+import { ROTULOS_DO_BRIEFING } from "./briefing-da-passagem";
 import { ROTULO_DE_ANONIMIZADO } from "./texto-do-aviso";
+
+/**
+ * O "Resumo da IA" do cartão SEM o que o cartão já mostra em seção própria.
+ *
+ * O `body` é o briefing inteiro (é ele que vai para a Central e para a nota):
+ * motivo, quem passou, o que o cliente quer, tentativas e fala do cliente vêm
+ * PRIMEIRO, e só depois os blocos que não têm seção no cartão — dados
+ * coletados, contexto acumulado e caso. Mostrar o `body` inteiro repetia, logo
+ * abaixo, tudo o que as seções acima já diziam (pedido de 18/11).
+ *
+ * O corte é por ÂNCORA, não linha a linha: texto de quem passou e fala do
+ * cliente podem ter várias linhas. Briefing antigo (só o checkpoint, sem os
+ * blocos novos) não começa com rótulo nenhum e passa inteiro.
+ */
+export function resumoSemRepeticao(corpo: string): string | null {
+  const r = ROTULOS_DO_BRIEFING;
+  const repetidos = [r.motivo, r.quemPassou, r.clienteQuer, r.tentativas, r.falaDoCliente];
+  if (!repetidos.some((rotulo) => corpo.startsWith(rotulo))) return corpo.trim() || null;
+  const inicios = [r.camposColetados, r.contextoAcumulado, r.caso]
+    .map((ancora) => corpo.indexOf(`\n${ancora}`))
+    .filter((i) => i >= 0);
+  if (inicios.length === 0) return null;
+  const resto = corpo
+    .slice(Math.min(...inicios) + 1)
+    .replace(`${r.contextoAcumulado}\n`, "")
+    .trim();
+  return resto === "" ? null : resto;
+}
 
 /** A linha como a rota da conversa a devolve. As chaves são as colunas. */
 export interface PassagemDaConversa {
@@ -227,7 +256,7 @@ export function montarCartoesDaPassagem(
       percebidoPeloJev:
         !anonimizada && p.motivo_codigo === "low_sentiment" && p.body.includes(MOTIVO_PERCEBIDO_PELO_JEV),
       clienteQuer: anonimizada ? null : texto(p.title),
-      resumo: semContexto ? null : corpo,
+      resumo: semContexto || corpo === null ? null : resumoSemRepeticao(corpo),
       semContexto,
       falaDoCliente: anonimizada ? null : texto(p.notes),
       textoDeQuemPassou: anonimizada ? null : texto(p.content),

@@ -172,6 +172,57 @@ describe("cartão da passagem — o que ele mostra", () => {
   });
 });
 
+describe("cartão da passagem — o resumo não repete as seções (pedido de 18/11)", () => {
+  // O caso real de 18/11: motivo, texto de quem passou, o que o cliente quer,
+  // cinco tentativas e a fala do cliente apareciam DUAS vezes — nas seções e,
+  // de novo, por extenso no "Resumo da IA".
+  const CHECKPOINT = {
+    commitments: [],
+    objections: [],
+    next_action: "aguardar o nome completo para cadastrar",
+    rolling_summary: "Escolheu 18/11 às 11:30 com o Dr. Guilherme na unidade Padre Anchieta.",
+  };
+  const comTudo = montarBriefingDaPassagem({
+    checkpoint: CHECKPOINT,
+    motivo: { codigo: "requested_human", texto: "Não foi possível agendar.\nNem em outros horários." },
+    declaradoPeloModelo: {
+      cliente_quer: "agendar clínico geral",
+      tentativas: [
+        { o_que: "busquei o paciente pelo CPF", desfecho: "encontrado" },
+        { o_que: "tentei agendar", desfecho: "horário indisponível" },
+      ],
+    },
+    pendentesDoCliente: ["Errei CPF\no correto é outro"],
+  }).body;
+
+  it("mostra só o contexto acumulado: nada de motivo, quem passou, cliente quer, tentativas ou fala", () => {
+    const c = montarCartoesDaPassagem([passagem({ body: comTudo })], NINGUEM_ATENDE)[0]!;
+    expect(c.resumo).toBe(
+      "Escolheu 18/11 às 11:30 com o Dr. Guilherme na unidade Padre Anchieta.\n" +
+        "Próxima ação: aguardar o nome completo para cadastrar",
+    );
+    for (const repetido of ["Por que a IA passou", "Quem passou escreveu", "Nem em outros horários", "tentei agendar", "Errei CPF", "o correto é outro", "Contexto acumulado"]) {
+      expect(c.resumo, repetido).not.toContain(repetido);
+    }
+    // As seções continuam com tudo — o corte é só no resumo.
+    expect(c.tentativas).toHaveLength(2);
+  });
+
+  it("sem contexto acumulado, o resumo some (as seções já dizem tudo) — sem cabeçalho órfão", () => {
+    const body = montarBriefingDaPassagem({
+      checkpoint: null,
+      motivo: { codigo: "requested_human", texto: "passou" },
+      declaradoPeloModelo: { cliente_quer: "agendar" },
+    }).body;
+    expect(montarCartoesDaPassagem([passagem({ body })], NINGUEM_ATENDE)[0]!.resumo).toBeNull();
+  });
+
+  it("briefing antigo (só o checkpoint, sem os blocos novos) passa inteiro", () => {
+    const c = montarCartoesDaPassagem([passagem({ body: "Cliente de 200 unidades." })], NINGUEM_ATENDE)[0]!;
+    expect(c.resumo).toBe("Cliente de 200 unidades.");
+  });
+});
+
 describe("cartão da passagem — irritação percebida pelo Jev (D11)", () => {
   it("o motivo em destaque diz que foi o Jev, a partir do resumo que o briefing gravou", () => {
     const body = montarBriefingDaPassagem({

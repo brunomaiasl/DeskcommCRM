@@ -63,6 +63,23 @@ import {
 export { PISO_DO_BRIEFING } from "./passagem";
 
 /**
+ * Os rótulos das linhas do briefing que o CARTÃO já mostra em seção própria
+ * (motivo, o que o cliente quer, tentativas, fala do cliente, texto de quem
+ * passou). Exportados para `cartao-da-passagem.ts` tirar essas linhas do
+ * "Resumo da IA" — antes o resumo repetia tudo o que estava logo acima.
+ */
+export const ROTULOS_DO_BRIEFING = {
+  motivo: "Por que a IA passou: ",
+  quemPassou: "Quem passou escreveu: ",
+  clienteQuer: "O que o cliente quer (segundo a IA — confira): ",
+  tentativas: "O que a IA já tentou:",
+  falaDoCliente: "Últimas mensagens do cliente (palavras dele): ",
+  contextoAcumulado: "Contexto acumulado (segundo a IA — confira):",
+  camposColetados: "Dados coletados automaticamente (confira antes de usar):",
+  caso: "Caso: ",
+} as const;
+
+/**
  * O checkpoint durável, na forma mínima que esta montagem lê. É a mesma linha
  * que `buildHandoffSummary` já recebia — o tipo é local de propósito, para a
  * função não depender do repositório do motor.
@@ -235,7 +252,7 @@ function normalizarCamposColetados(
 function blocoDeCamposColetados(campos: ReadonlyArray<{ rotulo: string; valor: string }>): string {
   if (campos.length === 0) return "";
   return [
-    "Dados coletados automaticamente (confira antes de usar):",
+    ROTULOS_DO_BRIEFING.camposColetados,
     ...campos.map((c) => `• ${c.rotulo}: ${c.valor}`),
   ].join("\n");
 }
@@ -305,32 +322,32 @@ export function montarBriefingDaPassagem(e: EntradaDoBriefing): BriefingDaPassag
 
   if (e.motivo) {
     const marca = e.motivo.percebidoPeloJev === true ? ` ${MARCA_DO_JEV}` : "";
-    blocos.push(`Por que a IA passou: ${FRASE_DO_MOTIVO[e.motivo.codigo]}${marca}`);
+    blocos.push(`${ROTULOS_DO_BRIEFING.motivo}${FRASE_DO_MOTIVO[e.motivo.codigo]}${marca}`);
     const escrito = limpo(e.motivo.texto);
     // Autoria variável (o modelo na ferramenta, uma pessoa no MCP), e não
     // confiável em nenhum dos casos: sai entre aspas, como citação.
-    if (escrito !== null) blocos.push(`Quem passou escreveu: "${escrito}"`);
+    if (escrito !== null) blocos.push(`${ROTULOS_DO_BRIEFING.quemPassou}"${escrito}"`);
   }
 
   // O bloco 2 só é impresso quando ACRESCENTA: se o título saiu da declaração,
   // o bloco do checkpoint já vai dizer a mesma frase, e duas fontes do mesmo
   // texto na mesma tela é o anti-pattern nº 2 com outro nome.
   if (title !== null && !doCheckpoint.includes(title)) {
-    blocos.push(`O que o cliente quer (segundo a IA — confira): ${title}`);
+    blocos.push(`${ROTULOS_DO_BRIEFING.clienteQuer}${title}`);
   }
 
   if (tentativas.length > 0) {
     const lista = tentativas.map(
       (t, i) => `${i + 1}) ${t.o_que}${t.desfecho === undefined ? "" : ` — ${t.desfecho}`}`,
     );
-    blocos.push(["O que a IA já tentou:", ...lista].join("\n"));
+    blocos.push([ROTULOS_DO_BRIEFING.tentativas, ...lista].join("\n"));
   }
 
   if (falas.length > 0) {
     // LITERAL e entre aspas. Trocar isto pela paráfrase do modelo é a sabotagem
     // que `tests/unit/briefing-da-passagem.test.ts` tem de derrubar.
     blocos.push(
-      `Últimas mensagens do cliente (palavras dele): ${falas.map((f) => `"${f}"`).join("; ")}`,
+      `${ROTULOS_DO_BRIEFING.falaDoCliente}${falas.map((f) => `"${f}"`).join("; ")}`,
     );
   }
 
@@ -347,12 +364,12 @@ export function montarBriefingDaPassagem(e: EntradaDoBriefing): BriefingDaPassag
     // (o adaptador `buildHandoffSummary`) ganharia uma linha que ele nunca teve,
     // e o teste de formato que hoje prova o piso passaria a provar outra coisa.
     blocos.push(
-      blocos.length === 0 ? doCheckpoint : `Contexto acumulado (segundo a IA — confira):\n${doCheckpoint}`,
+      blocos.length === 0 ? doCheckpoint : `${ROTULOS_DO_BRIEFING.contextoAcumulado}\n${doCheckpoint}`,
     );
   }
 
   if (e.caso) {
-    const doCaso: string[] = [`Caso: ${e.caso.titulo}`];
+    const doCaso: string[] = [`${ROTULOS_DO_BRIEFING.caso}${e.caso.titulo}`];
     const resumo = limpo(e.caso.summary);
     if (resumo !== null) doCaso.push(resumo);
     const bloqueio = limpo(e.caso.blocker);
