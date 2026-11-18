@@ -45,6 +45,7 @@ import {
   crmFeegowNextAvailable,
   crmFeegowAvailableSlots,
   crmFeegowFindPatient,
+  crmFeegowFindPatientByPhone,
   crmFeegowListPatientAppointments,
   crmFeegowCreatePatient,
   crmFeegowBookAppointment,
@@ -172,6 +173,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmFeegowNextAvailable,
   crmFeegowAvailableSlots,
   crmFeegowFindPatient,
+  crmFeegowFindPatientByPhone,
   crmFeegowListPatientAppointments,
   // write
   // A que consulta E marca numa chamada só vem primeiro: quando o cliente já deu

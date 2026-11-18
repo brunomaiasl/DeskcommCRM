@@ -77,6 +77,16 @@ export const TOOLS_FEEGOW = declararTools([
     pacotes: ["agendar"],
   },
   {
+    name: "crm_feegow_find_patient_by_phone",
+    category: "read",
+    rotulo: "Reconhecer o paciente pelo celular",
+    explicacao:
+      "Procura o cadastro do paciente pelo celular de quem está conversando, para já saber quem é e se tem consulta marcada. Só usa o número da própria conversa.",
+    oQueToca: "Cadastro de pacientes",
+    risco: "seguro",
+    pacotes: ["agendar"],
+  },
+  {
     name: "crm_feegow_list_patient_appointments",
     category: "read",
     rotulo: "Ver as consultas marcadas do paciente",

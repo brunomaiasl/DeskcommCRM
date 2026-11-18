@@ -134,6 +134,7 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_feegow_next_available": { tokens: 375, motivo: "+87: filtro `unidade_id` (a unidade que o paciente escolheu) e a descrição dizendo que busca em todas as unidades e devolve a unidade de cada horário (2026-11-16)" },
   "crm_feegow_available_slots": { tokens: 321, motivo: "+51: filtro `unidade_id` (a unidade que o paciente escolheu) (2026-11-16)" },
   "crm_feegow_find_patient": { tokens: 102, motivo: FEEGOW },
+  "crm_feegow_find_patient_by_phone": { tokens: 105, motivo: "ferramenta nova: reconhece o paciente pelo celular da própria conversa, sem argumento (2026-11-18)" },
   "crm_feegow_list_patient_appointments": { tokens: 99, motivo: FEEGOW },
   "crm_feegow_create_patient": { tokens: 258, motivo: FEEGOW },
   "crm_feegow_book_appointment": { tokens: 394, motivo: FEEGOW },
@@ -166,8 +167,9 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
 // mensagem (#4077); +2143 com as dez ferramentas da agenda do Feegow e
 // `crm_list_sectors` — as do Feegow só entram no turno com o pacote `agendar`;
 // +254 com `crm_feegow_list_units` e o filtro de unidade nas duas buscas
-// (2026-11-16), também só com o pacote `agendar`.
-const TETO_TOTAL = 33064;
+// (2026-11-16), também só com o pacote `agendar`. +105 com
+// `crm_feegow_find_patient_by_phone` (2026-11-18), também só com `agendar`.
+const TETO_TOTAL = 33169;
 
 const VARIANTE = "schedule_followup (com negócio)";
 

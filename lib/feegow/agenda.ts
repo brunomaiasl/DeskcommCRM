@@ -575,6 +575,92 @@ export function soDigitos(valor: string): string {
 }
 
 /**
+ * Os jeitos de escrever o celular que o Feegow casa. Medido em 18/11 no Feegow da
+ * clínica: `patient/list?telefone=` casa com DDD + número (11 dígitos) e NÃO casa
+ * com o 55 na frente. O de 10 dígitos (sem o 9) cobre cadastro antigo.
+ */
+export function variantesDoTelefone(telefone: string): string[] {
+  let d = soDigitos(telefone);
+  if ((d.length === 12 || d.length === 13) && d.startsWith("55")) d = d.slice(2);
+  if (d.length < 10) return [];
+  const saida: string[] = [];
+  if (d.length === 11) {
+    saida.push(d);
+    if (d[2] === "9") saida.push(d.slice(0, 2) + d.slice(3)); // sem o nono dígito
+  } else if (d.length === 10) {
+    saida.push(d, d.slice(0, 2) + "9" + d.slice(2)); // com o nono dígito
+  } else {
+    saida.push(d.slice(-11));
+  }
+  return [...new Set(saida)];
+}
+
+/** O que se sabe de um paciente achado pelo celular: o mínimo para reconhecer e cobrar certo. */
+export interface PacientePeloTelefone {
+  paciente_id: number;
+  primeiro_nome: string;
+  /** Tabela de preço do cadastro (`tabela_id`); a do Cartão Saúde tem "Cartão" no nome. */
+  tabela_id: number | null;
+}
+
+/**
+ * Os nomes das tabelas de preço particulares (`patient/list-privates`). Na Med
+ * Anchieta a 4 é a "Tabela Cartão Saúde Anchieta" — o nome, não o número, é o que
+ * decide (outra clínica tem outro id).
+ */
+export async function nomesDasTabelas(): Promise<Map<number, string>> {
+  return comCache("tabelas", async () => {
+    const bruto = await feegowGet<unknown>("patient/list-privates", {});
+    const mapa = new Map<number, string>();
+    for (const t of Array.isArray(bruto) ? bruto : []) {
+      const r = t as Record<string, unknown>;
+      const id = num(r.tabela_id);
+      if (id !== null) mapa.set(id, String(r.nome_tabela ?? ""));
+    }
+    return mapa;
+  });
+}
+
+/** A tabela do cadastro é a do Cartão Saúde? `null` = não dá para saber. */
+export function ehTabelaDoCartao(tabela_id: number | null, nomes: Map<number, string> | null): boolean | null {
+  if (tabela_id === null) return false;
+  if (!nomes) return null;
+  const nome = nomes.get(tabela_id);
+  if (nome === undefined) return null;
+  return /cart[aã]o/i.test(nome);
+}
+
+/**
+ * Pacientes com este celular (família pode dividir o número). Devolve só id,
+ * primeiro nome e a tabela de preço, pela mesma régua do `buscarPacientePorCpf`.
+ */
+export async function buscarPacientesPorTelefone(telefone: string): Promise<PacientePeloTelefone[]> {
+  for (const variante of variantesDoTelefone(telefone)) {
+    let conteudo: unknown;
+    try {
+      conteudo = await feegowGet<unknown>("patient/list", { telefone: variante, limit: 10 });
+    } catch (err) {
+      if (err instanceof FeegowError && err.kind === "conflito") continue; // "não encontrado"
+      throw err;
+    }
+    const lista = (Array.isArray(conteudo) ? conteudo : [])
+      .map((p) => {
+        const r = p as Record<string, unknown>;
+        const id = num(r.patient_id ?? r.paciente_id ?? r.id);
+        if (id === null) return null;
+        return {
+          paciente_id: id,
+          primeiro_nome: String(r.nome ?? "").trim().split(/\s+/)[0] ?? "",
+          tabela_id: num(r.tabela_id),
+        };
+      })
+      .filter((p): p is PacientePeloTelefone => p !== null);
+    if (lista.length > 0) return lista;
+  }
+  return [];
+}
+
+/**
  * Devolve o MÍNIMO da ficha. `patient/search` traz endereço, documentos e
  * telefones; nada disso é necessário para agendar, e tudo que o modelo lê pode
  * acabar numa mensagem para quem informou só um CPF (que pode nem ser dele).

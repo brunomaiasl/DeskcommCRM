@@ -29,7 +29,10 @@ import { logger } from "@/lib/logger";
 import {
   buscarHorarios,
   buscarPacientePorCpf,
+  buscarPacientesPorTelefone,
   cancelarAgendamento,
+  ehTabelaDoCartao,
+  nomesDasTabelas,
   criarAgendamento,
   criarPaciente,
   descreverHorario,
@@ -406,6 +409,54 @@ export const crmFeegowCreatePatient: McpToolDefinition<typeof criarPacienteShape
 // ─── agendamentos do paciente ───────────────────────────────────────────────
 
 const agendamentosShape = { paciente_id: idFeegow };
+
+const porTelefoneShape = {};
+
+/**
+ * O cadastro pelo celular DA CONVERSA. O número vem do contato do turno
+ * (`ctx.contatoDoTurno`, contexto de confiança), nunca do modelo: ninguém
+ * consulta a agenda de outra pessoa digitando o telefone dela.
+ */
+export const crmFeegowFindPatientByPhone: McpToolDefinition<typeof porTelefoneShape> = {
+  name: "crm_feegow_find_patient_by_phone",
+  description:
+    "Reconhece o paciente pelo celular DESTA conversa (você não escolhe o número), no começo do atendimento: " +
+    "consultas marcadas (crm_feegow_list_patient_appointments) e se tem Cartão Saúde. Vários no número: pergunte " +
+    "quem é. Para MARCAR, use sempre o CPF (crm_feegow_find_patient).",
+  inputSchema: porTelefoneShape,
+  category: "read",
+  requiresRole: "agent",
+  requiresScope: "mcp:read",
+  handler: async (_input, ctx) =>
+    comFeegow("crm_feegow_find_patient_by_phone", ctx, async () => {
+      if (!ctx.contatoDoTurno) {
+        return recusa("sem_conversa", "Só funciona dentro de uma conversa com o paciente. Peça o CPF.");
+      }
+      const { data } = await ctx.supabase
+        .from("contacts")
+        .select("phone_number")
+        .eq("organization_id", ctx.organizationId)
+        .eq("id", ctx.contatoDoTurno)
+        .maybeSingle();
+      const telefone = (data as { phone_number: string | null } | null)?.phone_number ?? null;
+      if (!telefone) {
+        return { ok: true, encontrado: false, mensagem: "Esta conversa não tem celular. Peça o CPF na hora de marcar." };
+      }
+      const achados = await buscarPacientesPorTelefone(telefone);
+      if (achados.length === 0) return { ok: true, encontrado: false, mensagem: "Nenhum cadastro com este celular." };
+      // Sem a lista de tabelas o resto continua valendo: o cartão fica "não sei" (null).
+      const nomes = await nomesDasTabelas().catch(() => null);
+      return {
+        ok: true,
+        encontrado: true,
+        pacientes: achados.map((p) => ({
+          paciente_id: p.paciente_id,
+          primeiro_nome: p.primeiro_nome,
+          possui_cartao_saude: ehTabelaDoCartao(p.tabela_id, nomes),
+        })),
+      };
+    }),
+};
 
 export const crmFeegowListPatientAppointments: McpToolDefinition<typeof agendamentosShape> = {
   name: "crm_feegow_list_patient_appointments",

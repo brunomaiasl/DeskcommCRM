@@ -26,6 +26,7 @@ vi.mock("@/lib/instalacao/config", () => ({
 import { esquecerFeegowConfig } from "@/lib/feegow/config";
 import {
   filtrarEspecialidades,
+  variantesDoTelefone,
   limparCacheDoFeegow,
   normalizarDisponibilidade,
   primeirosHorarios,
@@ -38,6 +39,7 @@ import { agoraEmSaoPaulo, isoParaBR, paraIso, somarDias } from "@/lib/feegow/dat
 import {
   crmFeegowBookAppointment,
   crmFeegowCancelAppointment,
+  crmFeegowFindPatientByPhone,
   crmFeegowListUnits,
   crmFeegowNextAvailable,
 } from "@/lib/mcp/tools/feegow";
@@ -166,6 +168,90 @@ describe("filtrarEspecialidades", () => {
   it("sem termo devolve todas; termo sem par devolve vazio", () => {
     expect(filtrarEspecialidades(ESP).length).toBe(ESP.length);
     expect(ids("astronauta")).toEqual([]);
+  });
+});
+
+// ─── paciente pelo celular da conversa ──────────────────────────────────────
+
+describe("variantesDoTelefone", () => {
+  it("tira o 55 (o Feegow não casa com ele) e cobre o cadastro sem o nono dígito", () => {
+    expect(variantesDoTelefone("+5519999798080")).toEqual(["19999798080", "1999798080"]);
+    expect(variantesDoTelefone("19999798080")).toEqual(["19999798080", "1999798080"]);
+    expect(variantesDoTelefone("1932345678")).toEqual(["1932345678", "19932345678"]);
+    expect(variantesDoTelefone("123")).toEqual([]);
+  });
+});
+
+describe("crm_feegow_find_patient_by_phone", () => {
+  /** O "banco" do contato: só a linha do contato do turno, na organização do turno. */
+  function ctxCom(telefone: string | null, contatoDoTurno: string | undefined) {
+    const filtros: Array<[string, string]> = [];
+    const consulta = {
+      select: () => consulta,
+      eq: (col: string, val: string) => (filtros.push([col, val]), consulta),
+      maybeSingle: async () => ({ data: { phone_number: telefone }, error: null }),
+    };
+    return {
+      ctx: { ...ctx, contatoDoTurno, supabase: { from: () => consulta } } as unknown as McpContext,
+      filtros,
+    };
+  }
+
+  // Formas reais do Feegow da Med Anchieta (18/11): a 4 é a tabela do Cartão.
+  const TABELAS = ok([
+    { tabela_id: 4, nome_tabela: "Tabela Cartão Saúde Anchieta" },
+    { tabela_id: 2, nome_tabela: "Tabela Particular" },
+  ]);
+
+  it("usa o celular do CONTATO DO TURNO (não um número do modelo); devolve id, primeiro nome e o Cartão", async () => {
+    simularFeegow((c) => {
+      if (c.path === "patient/list-privates") return TABELAS;
+      return c.path === "patient/list" && c.query.get("telefone") === "19999798080"
+        ? ok([
+            { patient_id: 91282, nome: "BRUNO MAIA DA SILVA", tabela_id: 4, celular: "19999798080", email: "x@y.z" },
+            { patient_id: 91283, nome: "ANA MAIA", tabela_id: 2, celular: "19999798080" },
+          ])
+        : ok([]);
+    });
+    const { ctx: c, filtros } = ctxCom("+5519999798080", "contato-1");
+    const r = await crmFeegowFindPatientByPhone.handler({} as never, c);
+    expect(r).toEqual({
+      ok: true,
+      encontrado: true,
+      pacientes: [
+        { paciente_id: 91282, primeiro_nome: "BRUNO", possui_cartao_saude: true },
+        { paciente_id: 91283, primeiro_nome: "ANA", possui_cartao_saude: false },
+      ],
+    });
+    // Nada da ficha além disso (e-mail, celular) vai para o modelo.
+    expect(JSON.stringify(r)).not.toContain("x@y.z");
+    expect(filtros).toContainEqual(["id", "contato-1"]);
+    expect(filtros).toContainEqual(["organization_id", "org"]);
+  });
+
+  it("sem a lista de tabelas, o Cartão fica null (não sei) e o resto continua", async () => {
+    simularFeegow((c) => {
+      if (c.path === "patient/list-privates") return { status: 500, body: { success: false } };
+      return c.path === "patient/list" ? ok([{ patient_id: 91282, nome: "BRUNO", tabela_id: 4 }]) : ok([]);
+    });
+    const { ctx: c } = ctxCom("19999798080", "contato-1");
+    expect(await crmFeegowFindPatientByPhone.handler({} as never, c)).toMatchObject({
+      encontrado: true,
+      pacientes: [{ paciente_id: 91282, possui_cartao_saude: null }],
+    });
+  });
+
+  it("sem contato do turno (rota externa, Testar): recusa e manda pedir o CPF", async () => {
+    simularFeegow(() => ok([]));
+    const { ctx: c } = ctxCom("+5519999798080", undefined);
+    expect(await crmFeegowFindPatientByPhone.handler({} as never, c)).toMatchObject({ ok: false, motivo: "sem_conversa" });
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("número sem cadastro: encontrado false, sem inventar paciente", async () => {
+    simularFeegow(() => ok([]));
+    const { ctx: c } = ctxCom("+5519999798080", "contato-1");
+    expect(await crmFeegowFindPatientByPhone.handler({} as never, c)).toMatchObject({ ok: true, encontrado: false });
   });
 });
 
