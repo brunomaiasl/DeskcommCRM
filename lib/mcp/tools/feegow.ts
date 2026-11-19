@@ -433,10 +433,19 @@ export const crmFeegowNextAvailable: McpToolDefinition<typeof proximoShape> = {
       }
       const nomes = await nomesDosProfissionais(esp.especialidade_id);
       const unidades = await unidadesPorLocalOuVazio();
+      // Manhã e tarde também aqui (18/11): o agente usou esta busca no lugar da
+      // de período e mostrou um único horário à tarde — os 5 de cada vêm prontos.
+      const porPeriodo = (manha: boolean) =>
+        horarios
+          .filter((h) => (h.hora < "12:00") === manha)
+          .slice(0, 5)
+          .map((h) => descreverHorario(h, nomes, unidades));
       return {
         ok: true,
         encontrou: true,
         especialidade: { especialidade_id: esp.especialidade_id, nome: esp.nome },
+        manha: porPeriodo(true),
+        tarde: porPeriodo(false),
         mais_proximos: horarios.slice(0, input.quantidade).map((h) => descreverHorario(h, nomes, unidades)),
         primeiro_de_cada_profissional: primeiroDeCadaProfissional(horarios)
           .slice(0, 5)

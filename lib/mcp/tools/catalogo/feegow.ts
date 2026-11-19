@@ -77,6 +77,16 @@ export const TOOLS_FEEGOW = declararTools([
     pacotes: ["agendar"],
   },
   {
+    name: "crm_consultar_valor",
+    category: "read",
+    rotulo: "Consultar o valor exato de consultas e exames",
+    explicacao:
+      "Lê na tabela de valores da clínica o preço particular e com o Cartão Saúde da consulta ou do exame pedido, pelo nome, para o assistente nunca dizer um valor errado.",
+    oQueToca: "Tabela de valores",
+    risco: "seguro",
+    pacotes: ["agendar"],
+  },
+  {
     name: "crm_feegow_find_patient_by_phone",
     category: "read",
     rotulo: "Reconhecer o paciente pelo celular",

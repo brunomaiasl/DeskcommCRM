@@ -179,6 +179,14 @@ export interface GateContext {
   spinning: {
     knobs: SpinningKnobs;
     window: RecentCopy[];
+    /**
+     * A ÚLTIMA mensagem que saiu para ESTE contato neste número (texto cru).
+     * Pedido de 18/11: o paciente escolheu "1" e o agente reenviou, palavra por
+     * palavra, a lista de horários que já tinha mandado. Mensagem idêntica à
+     * anterior não avança o atendimento — o gate devolve ao modelo para seguir.
+     * Ausente = não verificado (caminhos antigos e testes).
+     */
+    ultimaDoContato?: string | null;
   };
   /**
    * Tabela de preços/promessas versionada da org (F4-01), carregada por ponteiro
@@ -1248,6 +1256,26 @@ export const messagingWindowGate: Gate = {
   },
 };
 
+/** Texto para comparar "é a mesma mensagem?": sem caixa, acento, emoji, pontuação e espaços. */
+function paraComparar(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * A candidata é a MESMA mensagem que acabou de sair para este contato? Curtas
+ * (menos de 60 letras e números) ficam de fora: "Posso confirmar?" repetido pode
+ * ser legítimo; a lista inteira de horários reenviada, não.
+ */
+export function repeteAUltima(candidata: string, ultima: string | null | undefined): boolean {
+  if (!ultima) return false;
+  const a = paraComparar(candidata);
+  return a.length >= 60 && a === paraComparar(ultima);
+}
+
 const spinningGate: Gate = {
   name: 'spinning',
   evaluate: (ctx) => {
@@ -1255,6 +1283,16 @@ const spinningGate: Gate = {
     // entre "não vetou" e "nem chegou a olhar" é esta linha no trace (a mesma
     // disciplina do `messagingWindowGate` com canal sem janela).
     if (ctx.spinningEnforced === false) return { pass: true, skipped: 'not_applicable' };
+    if (repeteAUltima(ctx.body, ctx.spinning.ultimaDoContato)) {
+      return {
+        pass: false,
+        code: 'repete_a_ultima',
+        reason:
+          'esta mensagem é IGUAL à última que você mandou para este paciente — repetir não avança o atendimento. ' +
+          'Leia a resposta dele e siga para o próximo passo (ex.: se ele escolheu um horário pelo número, confirme ' +
+          'o horário e peça o CPF).',
+      };
+    }
     const decision = decideSpinning({
       candidate: ctx.body,
       window: ctx.spinning.window,
@@ -1872,7 +1910,11 @@ export async function runBeforeSend(args: RunBeforeSendArgs): Promise<BeforeSend
         rng: args.rng,
         ...(args.resposta !== undefined ? { resposta: args.resposta } : {}),
       },
-      spinning: { knobs: spinningKnobs, window },
+      spinning: {
+        knobs: spinningKnobs,
+        window,
+        ultimaDoContato: await readUltimaDoContato(client, args.tenantId, args.leadId, args.channelSessionId),
+      },
       ...(args.enforceSpinning === false ? { spinningEnforced: false as const } : {}),
       promise: {
         table: promise?.table ?? null,
@@ -2137,6 +2179,35 @@ export async function readStopFlags(
  * números diferentes, e a janela é por conversa, não por pessoa: responder no número
  * A não abre licença para escrever pelo número B.
  */
+/** O texto da última mensagem que saiu para o contato neste número (ou null). */
+async function readUltimaDoContato(
+  db: Queryable,
+  organizationId: string,
+  contactId: string,
+  channelSessionId: string,
+): Promise<string | null> {
+  // Savepoint: roda DENTRO da transação da cadeia, e um erro solto envenenaria
+  // a transação inteira (mesma proteção de `readRotaWeb`). Falha = "não verifiquei".
+  await db.query('savepoint ultima_do_contato');
+  try {
+    const { rows } = await db.query<{ body: string | null }>(
+      `select m.body from messages m
+        join conversations c on c.id = m.conversation_id and c.organization_id = m.organization_id
+       where m.organization_id = $1 and c.contact_id = $2 and c.channel_session_id = $3
+         and m.direction = 'outbound' and m.body is not null
+       order by m.created_at desc
+       limit 1`,
+      [organizationId, contactId, channelSessionId],
+    );
+    await db.query('release savepoint ultima_do_contato');
+    return rows[0]?.body ?? null;
+  } catch {
+    await db.query('rollback to savepoint ultima_do_contato');
+    await db.query('release savepoint ultima_do_contato');
+    return null;
+  }
+}
+
 async function readLastInboundAt(
   db: Queryable,
   organizationId: string,

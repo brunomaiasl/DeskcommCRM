@@ -52,6 +52,7 @@ import {
   crmFeegowRescheduleAppointment,
   crmFeegowCancelAppointment,
 } from "./feegow";
+import { crmConsultarValor } from "./valores";
 import {
   crmListAvailableAttendants,
   crmListHumanCases,
@@ -175,6 +176,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmFeegowFindPatient,
   crmFeegowFindPatientByPhone,
   crmFeegowListPatientAppointments,
+  crmConsultarValor,
   // write
   // A que consulta E marca numa chamada só vem primeiro: quando o cliente já deu
   // dia e hora, é o caminho curto, e é o que evita o turno morrer no meio (#831).

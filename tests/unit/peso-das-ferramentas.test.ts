@@ -134,6 +134,7 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
   "crm_feegow_next_available": { tokens: 411, motivo: "+36: especialidade pelo NOME (o servidor resolve o id; id inventado é recusado) — 2026-11-18" },
   "crm_feegow_available_slots": { tokens: 362, motivo: "+41: especialidade pelo NOME (o servidor resolve o id; id inventado é recusado) — 2026-11-18" },
   "crm_feegow_find_patient": { tokens: 102, motivo: FEEGOW },
+  "crm_consultar_valor": { tokens: 156, motivo: "ferramenta nova: valor EXATO de consulta/exame lido da tabela pelo nome — o preço deixa de vir da busca semântica (2026-11-18)" },
   "crm_feegow_find_patient_by_phone": { tokens: 105, motivo: "ferramenta nova: reconhece o paciente pelo celular da própria conversa, sem argumento (2026-11-18)" },
   "crm_feegow_list_patient_appointments": { tokens: 99, motivo: FEEGOW },
   "crm_feegow_create_patient": { tokens: 258, motivo: FEEGOW },
@@ -172,7 +173,8 @@ const TETO: Readonly<Record<string, { tokens: number; motivo: string }>> = {
 // +265 com o CPF digitado e a confirmação em duas chamadas nas três escritas do
 // Feegow (2026-11-18, depois de o agente marcar sozinho com o CPF de outra pessoa).
 // +77 com a especialidade pelo nome nas duas buscas de horário (2026-11-18).
-const TETO_TOTAL = 33511;
+// +156 com crm_consultar_valor (2026-11-18).
+const TETO_TOTAL = 33667;
 
 const VARIANTE = "schedule_followup (com negócio)";
 
